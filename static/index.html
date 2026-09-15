@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -83,18 +83,37 @@
           <div class="relative rounded-xl overflow-hidden bg-slate-950 border border-slate-700" style="aspect-ratio:4/3">
             <video id="cameraVideo" autoplay playsinline muted
               class="w-full h-full object-cover"></video>
+
             <!-- Overlay when camera not started -->
             <div id="cameraPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center text-slate-500 space-y-2">
               <i class="fa-solid fa-video-slash text-4xl"></i>
               <p class="text-xs">Camera not started</p>
             </div>
-            <!-- Face guide overlay -->
-            <div id="cameraGuide" class="hidden absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div class="w-36 h-44 rounded-full border-2 border-dashed border-indigo-400/60 opacity-70"></div>
+
+            <!-- Face guide oval — color changes on detection -->
+            <div id="cameraGuide" class="hidden absolute inset-0 flex flex-col items-center justify-center pointer-events-none gap-2">
+              <div id="faceOval" class="w-36 h-44 rounded-full border-[3px] border-dashed transition-all duration-300"
+                style="border-color:rgba(99,102,241,0.55)"></div>
+              <!-- Status label under oval -->
+              <div id="faceStatusLabel" class="px-3 py-0.5 rounded-full text-[11px] font-bold backdrop-blur-sm"
+                style="background:rgba(0,0,0,0.55);color:#94a3b8">
+                Align face in oval
+              </div>
             </div>
+
+            <!-- Countdown ring overlay (shown just before capture) -->
+            <div id="countdownOverlay" class="hidden absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div id="countdownNum" class="text-6xl font-black text-white drop-shadow-lg" style="text-shadow:0 0 20px rgba(99,102,241,0.8)"></div>
+            </div>
+
             <!-- Capture count badge -->
             <div id="captureBadge" class="hidden absolute top-2 left-2 px-2 py-0.5 rounded bg-indigo-600/90 text-[11px] font-bold text-white">
               0 / 4
+            </div>
+
+            <!-- Auto mode badge -->
+            <div id="autoModeBadge" class="hidden absolute top-2 right-2 px-2 py-0.5 rounded bg-emerald-600/90 text-[10px] font-bold text-white flex items-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-white animate-pulse inline-block"></span> AUTO
             </div>
           </div>
 
@@ -114,15 +133,21 @@
               <i class="fa-solid fa-video"></i> Start Camera
             </button>
             <button id="btnCapture" onclick="captureFrame()" disabled
-              class="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 active:scale-95">
-              <i class="fa-solid fa-camera-retro"></i> Capture
+              class="flex-1 py-2 bg-indigo-600/70 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 active:scale-95">
+              <i class="fa-solid fa-camera-retro"></i> Manual
             </button>
             <button id="btnStopCamera" onclick="stopCamera()" disabled
               class="py-2 px-3 bg-slate-800 hover:bg-red-900/60 disabled:opacity-40 disabled:cursor-not-allowed transition rounded-lg text-xs font-semibold active:scale-95" title="Stop camera">
               <i class="fa-solid fa-stop text-red-400"></i>
             </button>
           </div>
-          <p class="text-[10px] text-slate-500 text-center">Tip: Capture multiple angles for better accuracy (max 4)</p>
+          <!-- Auto-detect status line -->
+          <div id="autoStatusLine" class="hidden text-center">
+            <p id="autoStatusText" class="text-[11px] text-emerald-400 font-medium">
+              <i class="fa-solid fa-circle-dot animate-pulse mr-1"></i>Auto-capture active — look into the oval
+            </p>
+          </div>
+          <p class="text-[10px] text-slate-500 text-center">Tip: Face multiple angles for better accuracy (max 4 captures)</p>
         </div>
 
         <!-- ── Shared: Thumbnails preview ──────────────────────────────── -->
@@ -175,7 +200,7 @@
     </section>
 
     <!-- ── Right Column: Results ───────────────────────────────────────── -->
-    <section class="lg:col-span-8 flex flex-col space-y-4">
+    <section class="lg:col-span-8 flex flex-col space-y-4 items-stretch">
       <div class="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 class="text-lg font-bold text-white flex items-center">
@@ -204,7 +229,7 @@
       </div>
 
       <!-- Gallery Grid -->
-      <div id="resultsGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 flex-1"></div>
+      <div id="resultsGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 auto-rows-max content-start items-start"></div>
     </section>
 
   </main>
@@ -274,15 +299,33 @@
     }
 
     // ── Camera panel ───────────────────────────────────────────────────────
+    let faceDetector      = null;   // FaceDetector API instance
+    let detectionInterval = null;   // setInterval handle for detection loop
+    let holdFrames        = 0;      // consecutive frames face was in oval
+    let captureInProgress = false;  // prevent double-capture during countdown
+    const HOLD_NEEDED     = 4;      // frames before auto-capture triggers (~1.2s @ 300ms)
+    const CAPTURE_COOLDOWN= 2800;   // ms between auto-captures
+
+    // Oval state helpers
+    const OVAL_STATES = {
+      idle:      { color: 'rgba(99,102,241,0.55)',  label: 'Align face in oval',       labelColor: '#94a3b8' },
+      detected:  { color: 'rgba(251,191,36,0.9)',   label: 'Hold still...',             labelColor: '#fbbf24' },
+      capturing: { color: 'rgba(52,211,153,1)',      label: 'Capturing! ✓',             labelColor: '#34d399' },
+    };
+
+    function setOvalState(state) {
+      const s = OVAL_STATES[state] || OVAL_STATES.idle;
+      const oval  = document.getElementById('faceOval');
+      const label = document.getElementById('faceStatusLabel');
+      if (oval)  oval.style.borderColor = s.color;
+      if (label) { label.textContent = s.label; label.style.color = s.labelColor; }
+    }
+
     async function startCamera() {
       cameraError.classList.add('hidden');
       try {
         const constraints = {
-          video: {
-            width:  { ideal: 1280 },
-            height: { ideal: 720 },
-            facingMode: 'user'         // Front camera on mobile
-          },
+          video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
           audio: false
         };
         cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -290,22 +333,157 @@
         cameraPlaceholder.classList.add('hidden');
         cameraGuide.classList.remove('hidden');
         captureBadge.classList.remove('hidden');
+        document.getElementById('autoModeBadge').classList.remove('hidden');
         updateCaptureBadge();
-        btnCapture.disabled    = false;
-        btnStopCamera.disabled = false;
+        btnCapture.disabled     = false;
+        btnStopCamera.disabled  = false;
         btnStartCamera.disabled = true;
+        setOvalState('idle');
+
+        // Try to init FaceDetector API
+        const hasAutoDetect = await initFaceDetector();
+        const autoStatusLine = document.getElementById('autoStatusLine');
+        const autoStatusText = document.getElementById('autoStatusText');
+        if (hasAutoDetect) {
+          autoStatusLine.classList.remove('hidden');
+          autoStatusText.innerHTML = '<i class="fa-solid fa-circle-dot animate-pulse mr-1"></i>Auto-capture active — look into the oval';
+          startDetectionLoop();
+        } else {
+          // FaceDetector not supported — fallback: skin-tone detection
+          autoStatusLine.classList.remove('hidden');
+          autoStatusText.innerHTML = '<i class="fa-solid fa-circle-dot animate-pulse mr-1"></i>Auto-capture active — align your face in the oval';
+          startSkinDetectionLoop();
+        }
       } catch (err) {
         let msg = 'Camera access denied or unavailable.';
-        if (err.name === 'NotFoundError')     msg = 'No camera found on this device.';
-        if (err.name === 'NotAllowedError')   msg = 'Camera permission denied. Please allow access in browser settings.';
-        if (err.name === 'NotReadableError')  msg = 'Camera is in use by another application.';
+        if (err.name === 'NotFoundError')        msg = 'No camera found on this device.';
+        if (err.name === 'NotAllowedError')      msg = 'Camera permission denied. Please allow access in browser settings.';
+        if (err.name === 'NotReadableError')     msg = 'Camera is in use by another application.';
         if (err.name === 'OverconstrainedError') msg = 'Camera does not support the required resolution.';
         cameraErrorMsg.textContent = msg;
         cameraError.classList.remove('hidden');
       }
     }
 
+    async function initFaceDetector() {
+      if (!('FaceDetector' in window)) return false;
+      try {
+        faceDetector = new FaceDetector({ fastMode: true, maxDetectedFaces: 1 });
+        // Test it works
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 100;
+        await faceDetector.detect(canvas);
+        return true;
+      } catch(e) { faceDetector = null; return false; }
+    }
+
+    // ── FaceDetector API loop ──────────────────────────────────────────────
+    function startDetectionLoop() {
+      stopDetectionLoops();
+      detectionInterval = setInterval(async () => {
+        if (!cameraStream || cameraVideo.readyState < 2 || captureInProgress) return;
+        try {
+          const faces = await faceDetector.detect(cameraVideo);
+          const vw = cameraVideo.videoWidth  || 640;
+          const vh = cameraVideo.videoHeight || 480;
+          // Oval bounds (mirrors the CSS oval: w-36 h-44 centered)
+          const ow = vw * 0.38, oh = vh * 0.50;
+          const cx = vw / 2,    cy = vh / 2;
+
+          const inOval = faces.some(f => {
+            const dx = (f.boundingBox.x + f.boundingBox.width  / 2 - cx) / (ow / 2);
+            const dy = (f.boundingBox.y + f.boundingBox.height / 2 - cy) / (oh / 2);
+            return (dx * dx + dy * dy) <= 1.3;
+          });
+          handleDetectionResult(inOval);
+        } catch(e) {}
+      }, 300);
+    }
+
+    // ── Skin-tone fallback loop (canvas pixel analysis) ────────────────────
+    function startSkinDetectionLoop() {
+      stopDetectionLoops();
+      const canvas = document.createElement('canvas');
+      const ctx2   = canvas.getContext('2d', { willReadFrequently: true });
+
+      detectionInterval = setInterval(() => {
+        if (!cameraStream || cameraVideo.readyState < 2 || captureInProgress) return;
+        const vw = cameraVideo.videoWidth  || 640;
+        const vh = cameraVideo.videoHeight || 480;
+        canvas.width = vw; canvas.height = vh;
+
+        // Sample a small region in the oval center (mirrored, so we sample center)
+        const rx = Math.round(vw * 0.31), ry = Math.round(vh * 0.25);
+        const rw = Math.round(vw * 0.38), rh = Math.round(vh * 0.50);
+
+        ctx2.drawImage(cameraVideo, 0, 0, vw, vh);
+        const imgData = ctx2.getImageData(rx, ry, rw, rh);
+        const pixels  = imgData.data;
+
+        let skinCount = 0;
+        const total   = pixels.length / 4;
+        for (let i = 0; i < pixels.length; i += 4) {
+          const r = pixels[i], g = pixels[i+1], b = pixels[i+2];
+          // Simple skin-tone heuristic (works for various skin tones)
+          const isSkin = r > 60 && g > 40 && b > 20 &&
+                         r > g && r > b &&
+                         (r - Math.min(g, b)) > 15 &&
+                         Math.abs(r - g) > 10;
+          if (isSkin) skinCount++;
+        }
+        const skinRatio = skinCount / total;
+        handleDetectionResult(skinRatio > 0.18); // >18% skin pixels = face present
+      }, 300);
+    }
+
+    // ── Shared detection result handler ───────────────────────────────────
+    function handleDetectionResult(faceInOval) {
+      if (faceInOval) {
+        holdFrames++;
+        if (holdFrames >= HOLD_NEEDED && !captureInProgress) {
+          holdFrames = 0;
+          triggerAutoCapture();
+        } else if (holdFrames > 0) {
+          setOvalState('detected');
+        }
+      } else {
+        holdFrames = 0;
+        if (!captureInProgress) setOvalState('idle');
+      }
+    }
+
+    // ── Auto-capture with visual feedback ─────────────────────────────────
+    async function triggerAutoCapture() {
+      if (captureInProgress || selectedFiles.length >= 4) return;
+      captureInProgress = true;
+      setOvalState('capturing');
+
+      // Brief "flash" feedback then capture
+      await new Promise(r => setTimeout(r, 150));
+      captureFrame(true); // true = called from auto
+
+      // Cooldown before next detection
+      await new Promise(r => setTimeout(r, CAPTURE_COOLDOWN));
+      captureInProgress = false;
+
+      if (selectedFiles.length < 4 && cameraStream) {
+        setOvalState('idle');
+        holdFrames = 0;
+      } else if (selectedFiles.length >= 4) {
+        stopDetectionLoops();
+        document.getElementById('autoStatusText').innerHTML =
+          '<i class="fa-solid fa-check-circle mr-1"></i>4 captures done! Click Search Person.';
+      }
+    }
+
+    function stopDetectionLoops() {
+      if (detectionInterval) { clearInterval(detectionInterval); detectionInterval = null; }
+      holdFrames = 0;
+    }
+
     function stopCamera() {
+      stopDetectionLoops();
+      captureInProgress = false;
       if (cameraStream) {
         cameraStream.getTracks().forEach(t => t.stop());
         cameraStream = null;
@@ -314,46 +492,39 @@
       cameraPlaceholder.classList.remove('hidden');
       cameraGuide.classList.add('hidden');
       captureBadge.classList.add('hidden');
+      document.getElementById('autoModeBadge').classList.add('hidden');
+      document.getElementById('autoStatusLine').classList.add('hidden');
       btnCapture.disabled     = true;
       btnStopCamera.disabled  = true;
       btnStartCamera.disabled = false;
     }
 
-    function captureFrame() {
+    function captureFrame(fromAuto = false) {
       if (!cameraStream || selectedFiles.length >= 4) {
-        if (selectedFiles.length >= 4) alert('Maximum 4 photos reached. Remove one first.');
+        if (!fromAuto && selectedFiles.length >= 4) alert('Maximum 4 photos reached. Remove one first.');
         return;
       }
-
-      // Draw current video frame onto an offscreen canvas
       const canvas = document.createElement('canvas');
       canvas.width  = cameraVideo.videoWidth  || 640;
       canvas.height = cameraVideo.videoHeight || 480;
       const ctx = canvas.getContext('2d');
-
-      // Un-mirror the captured image (mirror CSS was only for preview)
+      // Un-mirror (CSS mirror was only for preview feel)
       ctx.translate(canvas.width, 0);
       ctx.scale(-1, 1);
       ctx.drawImage(cameraVideo, 0, 0, canvas.width, canvas.height);
 
       // Flash effect
       const flash = document.createElement('div');
-      flash.style.cssText = 'position:absolute;inset:0;background:white;opacity:0.7;border-radius:12px;pointer-events:none;transition:opacity 0.3s';
+      flash.style.cssText = 'position:absolute;inset:0;background:white;opacity:0.75;border-radius:12px;pointer-events:none;transition:opacity 0.3s ease';
       cameraVideo.parentElement.appendChild(flash);
-      setTimeout(() => flash.remove(), 350);
+      requestAnimationFrame(() => { flash.style.opacity = '0'; setTimeout(() => flash.remove(), 350); });
 
-      // Convert canvas → File object (same as uploaded image)
       canvas.toBlob((blob) => {
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         const file = new File([blob], `capture_${timestamp}.jpg`, { type: 'image/jpeg' });
         selectedFiles.push(file);
         renderPreviews();
         updateCaptureBadge();
-
-        // Auto-stop camera if we hit 4
-        if (selectedFiles.length >= 4) {
-          setTimeout(() => alert('4 photos captured! Click "Search Person" to find matches.'), 100);
-        }
       }, 'image/jpeg', 0.92);
     }
 
@@ -430,7 +601,7 @@
       }
       items.forEach(item => {
         const card = document.createElement('div');
-        card.className = 'group relative bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg transition hover:border-indigo-500/50 hover:shadow-indigo-500/10 flex flex-col';
+        card.className = 'group relative bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg transition hover:border-indigo-500/50 hover:shadow-indigo-500/10 flex flex-col h-fit';
         const photoName = item.numbered_filename || item.filename;
         let tierBadgeHtml = '';
         if (isSearchResult && item.tier) {
