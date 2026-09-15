@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# InsightFace model cache (downloaded automatically on first run)
+.insightface/
+
+# Data files — large binaries, not needed in repo
+data/processed_photos/
+data/faces.index
+data/metadata.sqlite
+
+# Keep the data folder itself tracked (for structure)
+!data/.gitkeep
+
+# Stock photos — your private photos, don't push to public repo
+stock/
+!stock/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log

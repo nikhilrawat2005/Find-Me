@@ -1,0 +1,11 @@
+numpy<2.0.0
+opencv-python
+pillow
+fastapi
+uvicorn
+python-multipart
+onnxruntime
+insightface
+faiss-cpu
+pydantic
+tqdm

@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FIND ME - Face Recognition Photo Search</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    #cameraVideo { transform: scaleX(-1); } /* Mirror for selfie feel */
+    .tab-active   { background: #4f46e5; color: #fff; }
+    .tab-inactive { background: transparent; color: #94a3b8; }
+    .tab-inactive:hover { color: #e2e8f0; background: rgba(255,255,255,0.05); }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased flex flex-col">
+
+  <!-- Header -->
+  <header class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-50 px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center space-x-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-xl font-bold shadow-lg shadow-indigo-500/25">
+        <i class="fa-solid fa-face-smile"></i>
+      </div>
+      <div>
+        <h1 class="text-xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-200 to-indigo-300 bg-clip-text text-transparent">FIND ME</h1>
+        <p class="text-xs text-slate-400">Face Recognition &amp; Vector Search System</p>
+      </div>
+    </div>
+    <div class="flex items-center space-x-4">
+      <div id="statsBadge" class="hidden sm:flex items-center space-x-3 bg-slate-800/80 border border-slate-700/60 px-3.5 py-1.5 rounded-full text-xs text-slate-300">
+        <span><i class="fa-solid fa-images text-indigo-400 mr-1.5"></i><strong id="statPhotos">0</strong> Photos</span>
+        <span class="text-slate-600">|</span>
+        <span><i class="fa-solid fa-id-badge text-purple-400 mr-1.5"></i><strong id="statFaces">0</strong> Faces</span>
+      </div>
+      <button id="btnIndex" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 transition rounded-lg text-xs font-semibold flex items-center space-x-2 shadow-md shadow-indigo-600/20 active:scale-95">
+        <i class="fa-solid fa-rotate"></i>
+        <span>Scan &amp; Index Stock</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-8">
+
+    <!-- ── Left Column ─────────────────────────────────────────────────── -->
+    <section class="lg:col-span-4 space-y-5">
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+
+        <!-- Title -->
+        <h2 class="text-base font-bold text-slate-100 flex items-center">
+          <i class="fa-solid fa-user-check text-indigo-400 mr-2.5"></i> Add Reference Photos
+        </h2>
+        <p class="text-xs text-slate-400 leading-relaxed">
+          Upload or capture 1–4 photos of the person. The system searches all three confidence levels automatically.
+        </p>
+
+        <!-- ── Input Mode Tabs ─────────────────────────────────────────── -->
+        <div class="flex rounded-xl overflow-hidden border border-slate-700 text-xs font-semibold">
+          <button id="tabUpload" onclick="switchTab('upload')"
+            class="tab-active flex-1 py-2 flex items-center justify-center gap-1.5 transition rounded-l-xl">
+            <i class="fa-solid fa-upload text-[11px]"></i> Upload Photo
+          </button>
+          <button id="tabCamera" onclick="switchTab('camera')"
+            class="tab-inactive flex-1 py-2 flex items-center justify-center gap-1.5 transition rounded-r-xl">
+            <i class="fa-solid fa-camera text-[11px]"></i> Use Camera
+          </button>
+        </div>
+
+        <!-- ── UPLOAD PANEL ────────────────────────────────────────────── -->
+        <div id="panelUpload">
+          <div id="dropzone" class="border-2 border-dashed border-slate-700 hover:border-indigo-500/80 transition-all rounded-xl p-6 text-center cursor-pointer bg-slate-950/40 hover:bg-slate-900/60">
+            <input type="file" id="fileInput" multiple accept="image/*" class="hidden">
+            <i class="fa-solid fa-images text-3xl text-slate-500 mb-3 block"></i>
+            <p class="text-sm font-medium text-slate-200">Drag &amp; drop or click to upload</p>
+            <p class="text-xs text-slate-500 mt-1">PNG, JPG, WEBP &nbsp;·&nbsp; Max 4 images</p>
+          </div>
+        </div>
+
+        <!-- ── CAMERA PANEL ────────────────────────────────────────────── -->
+        <div id="panelCamera" class="hidden space-y-3">
+
+          <!-- Video preview -->
+          <div class="relative rounded-xl overflow-hidden bg-slate-950 border border-slate-700" style="aspect-ratio:4/3">
+            <video id="cameraVideo" autoplay playsinline muted
+              class="w-full h-full object-cover"></video>
+            <!-- Overlay when camera not started -->
+            <div id="cameraPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center text-slate-500 space-y-2">
+              <i class="fa-solid fa-video-slash text-4xl"></i>
+              <p class="text-xs">Camera not started</p>
+            </div>
+            <!-- Face guide overlay -->
+            <div id="cameraGuide" class="hidden absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div class="w-36 h-44 rounded-full border-2 border-dashed border-indigo-400/60 opacity-70"></div>
+            </div>
+            <!-- Capture count badge -->
+            <div id="captureBadge" class="hidden absolute top-2 left-2 px-2 py-0.5 rounded bg-indigo-600/90 text-[11px] font-bold text-white">
+              0 / 4
+            </div>
+          </div>
+
+          <!-- Camera error message -->
+          <div id="cameraError" class="hidden bg-red-950/60 border border-red-800/50 rounded-xl p-3 text-xs text-red-300 flex items-start gap-2">
+            <i class="fa-solid fa-circle-exclamation mt-0.5 shrink-0"></i>
+            <div>
+              <p id="cameraErrorMsg" class="font-semibold">Camera unavailable.</p>
+              <p class="text-red-400/80 mt-0.5">Switch to <strong>Upload Photo</strong> tab to continue.</p>
+            </div>
+          </div>
+
+          <!-- Camera controls -->
+          <div class="flex gap-2">
+            <button id="btnStartCamera" onclick="startCamera()"
+              class="flex-1 py-2 bg-slate-700 hover:bg-slate-600 transition rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 active:scale-95">
+              <i class="fa-solid fa-video"></i> Start Camera
+            </button>
+            <button id="btnCapture" onclick="captureFrame()" disabled
+              class="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 active:scale-95">
+              <i class="fa-solid fa-camera-retro"></i> Capture
+            </button>
+            <button id="btnStopCamera" onclick="stopCamera()" disabled
+              class="py-2 px-3 bg-slate-800 hover:bg-red-900/60 disabled:opacity-40 disabled:cursor-not-allowed transition rounded-lg text-xs font-semibold active:scale-95" title="Stop camera">
+              <i class="fa-solid fa-stop text-red-400"></i>
+            </button>
+          </div>
+          <p class="text-[10px] text-slate-500 text-center">Tip: Capture multiple angles for better accuracy (max 4)</p>
+        </div>
+
+        <!-- ── Shared: Thumbnails preview ──────────────────────────────── -->
+        <div id="previewContainer" class="hidden">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-[11px] text-slate-400 font-medium">Selected photos</span>
+            <button onclick="clearAllFiles()" class="text-[10px] text-red-400 hover:text-red-300 transition">
+              <i class="fa-solid fa-trash-can mr-1"></i>Clear all
+            </button>
+          </div>
+          <div id="thumbGrid" class="grid grid-cols-4 gap-2"></div>
+        </div>
+
+        <!-- ── 3-Tier Info ──────────────────────────────────────────────── -->
+        <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-3 space-y-2">
+          <p class="text-[11px] font-semibold text-slate-300 flex items-center">
+            <i class="fa-solid fa-layer-group text-indigo-400 mr-1.5"></i> 3-Level Smart Search
+          </p>
+          <div class="space-y-1.5 text-[11px]">
+            <div class="flex items-center justify-between">
+              <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span><span class="text-slate-300">Strong Match</span></span>
+              <span class="text-slate-500 font-mono">score ≥ 0.52</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span><span class="text-slate-300">Likely Match</span></span>
+              <span class="text-slate-500 font-mono">0.40 – 0.52</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-orange-400 inline-block"></span><span class="text-slate-300">Possible Match</span></span>
+              <span class="text-slate-500 font-mono">0.30 – 0.40</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Search Button -->
+        <button id="btnSearch"
+          class="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/25 transition active:scale-[0.98] flex items-center justify-center space-x-2">
+          <i class="fa-solid fa-magnifying-glass"></i>
+          <span>Search Person</span>
+        </button>
+      </div>
+
+      <!-- Protection Note -->
+      <div class="bg-slate-900/50 border border-slate-800/80 rounded-xl p-4 text-xs text-slate-400 space-y-2">
+        <div class="flex items-center text-slate-300 font-semibold">
+          <i class="fa-solid fa-shield-halved text-emerald-400 mr-2"></i> Non-Destructive Protection
+        </div>
+        <p>Original photos in <code class="text-indigo-300 font-mono">stock/</code> are preserved. Indexed into <code class="text-indigo-300 font-mono">data/processed_photos/</code> with FAISS.</p>
+      </div>
+    </section>
+
+    <!-- ── Right Column: Results ───────────────────────────────────────── -->
+    <section class="lg:col-span-8 flex flex-col space-y-4">
+      <div class="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 class="text-lg font-bold text-white flex items-center">
+            <i class="fa-solid fa-list-check text-purple-400 mr-2.5"></i> Search Results
+          </h2>
+          <p id="resultStatus" class="text-xs text-slate-400 mt-0.5">Showing all indexed photos. Upload or capture reference photos to search.</p>
+        </div>
+        <!-- Tier Summary Badges -->
+        <div id="tierSummary" class="hidden flex flex-wrap gap-2">
+          <span id="badgeStrong" class="hidden items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-900/60 border border-emerald-700/50 text-emerald-300">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span><span id="countStrong">0</span> Strong
+          </span>
+          <span id="badgeLikely" class="hidden items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-900/60 border border-amber-700/50 text-amber-300">
+            <span class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span><span id="countLikely">0</span> Likely
+          </span>
+          <span id="badgePossible" class="hidden items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-orange-900/60 border border-orange-700/50 text-orange-300">
+            <span class="w-2 h-2 rounded-full bg-orange-400 inline-block"></span><span id="countPossible">0</span> Possible
+          </span>
+        </div>
+      </div>
+
+      <!-- Loader -->
+      <div id="loader" class="hidden py-24 flex flex-col items-center justify-center space-y-4">
+        <div class="w-12 h-12 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin"></div>
+        <p id="loaderText" class="text-sm text-slate-400">Searching across all confidence levels...</p>
+      </div>
+
+      <!-- Gallery Grid -->
+      <div id="resultsGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 flex-1"></div>
+    </section>
+
+  </main>
+
+  <script>
+    // ── State ──────────────────────────────────────────────────────────────
+    let selectedFiles = [];   // Shared between upload & camera
+    let cameraStream  = null; // Active MediaStream
+
+    // ── DOM refs ───────────────────────────────────────────────────────────
+    const dropzone         = document.getElementById('dropzone');
+    const fileInput        = document.getElementById('fileInput');
+    const previewContainer = document.getElementById('previewContainer');
+    const thumbGrid        = document.getElementById('thumbGrid');
+    const btnSearch        = document.getElementById('btnSearch');
+    const btnIndex         = document.getElementById('btnIndex');
+    const resultsGrid      = document.getElementById('resultsGrid');
+    const loader           = document.getElementById('loader');
+    const loaderText       = document.getElementById('loaderText');
+    const resultStatus     = document.getElementById('resultStatus');
+    const tierSummary      = document.getElementById('tierSummary');
+    const cameraVideo      = document.getElementById('cameraVideo');
+    const cameraPlaceholder= document.getElementById('cameraPlaceholder');
+    const cameraGuide      = document.getElementById('cameraGuide');
+    const cameraError      = document.getElementById('cameraError');
+    const cameraErrorMsg   = document.getElementById('cameraErrorMsg');
+    const captureBadge     = document.getElementById('captureBadge');
+    const btnCapture       = document.getElementById('btnCapture');
+    const btnStopCamera    = document.getElementById('btnStopCamera');
+    const btnStartCamera   = document.getElementById('btnStartCamera');
+
+    const TIER_STYLES = {
+      strong:   { bg: 'bg-emerald-600/90', dot: 'bg-emerald-300', text: 'text-white' },
+      likely:   { bg: 'bg-amber-500/90',   dot: 'bg-amber-200',   text: 'text-white' },
+      possible: { bg: 'bg-orange-500/80',  dot: 'bg-orange-200',  text: 'text-white' },
+    };
+
+    // ── Tab switching ──────────────────────────────────────────────────────
+    function switchTab(tab) {
+      const isUpload = tab === 'upload';
+      document.getElementById('tabUpload').className  = 'flex-1 py-2 flex items-center justify-center gap-1.5 transition rounded-l-xl ' + (isUpload  ? 'tab-active' : 'tab-inactive');
+      document.getElementById('tabCamera').className  = 'flex-1 py-2 flex items-center justify-center gap-1.5 transition rounded-r-xl ' + (!isUpload ? 'tab-active' : 'tab-inactive');
+      document.getElementById('panelUpload').classList.toggle('hidden', !isUpload);
+      document.getElementById('panelCamera').classList.toggle('hidden',  isUpload);
+      if (isUpload) stopCamera(); // Auto-stop camera when switching away
+    }
+
+    // ── Upload panel ───────────────────────────────────────────────────────
+    dropzone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', (e) => handleFiles(Array.from(e.target.files)));
+    dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('border-indigo-500'); });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('border-indigo-500'));
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('border-indigo-500');
+      handleFiles(Array.from(e.dataTransfer.files));
+    });
+
+    function handleFiles(files) {
+      const valid = files.filter(f => f.type.startsWith('image/'));
+      const remaining = 4 - selectedFiles.length;
+      if (remaining <= 0) { alert('Maximum 4 photos already selected. Remove some first.'); return; }
+      const toAdd = valid.slice(0, remaining);
+      if (toAdd.length === 0) return;
+      selectedFiles.push(...toAdd);
+      renderPreviews();
+    }
+
+    // ── Camera panel ───────────────────────────────────────────────────────
+    async function startCamera() {
+      cameraError.classList.add('hidden');
+      try {
+        const constraints = {
+          video: {
+            width:  { ideal: 1280 },
+            height: { ideal: 720 },
+            facingMode: 'user'         // Front camera on mobile
+          },
+          audio: false
+        };
+        cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+        cameraVideo.srcObject = cameraStream;
+        cameraPlaceholder.classList.add('hidden');
+        cameraGuide.classList.remove('hidden');
+        captureBadge.classList.remove('hidden');
+        updateCaptureBadge();
+        btnCapture.disabled    = false;
+        btnStopCamera.disabled = false;
+        btnStartCamera.disabled = true;
+      } catch (err) {
+        let msg = 'Camera access denied or unavailable.';
+        if (err.name === 'NotFoundError')     msg = 'No camera found on this device.';
+        if (err.name === 'NotAllowedError')   msg = 'Camera permission denied. Please allow access in browser settings.';
+        if (err.name === 'NotReadableError')  msg = 'Camera is in use by another application.';
+        if (err.name === 'OverconstrainedError') msg = 'Camera does not support the required resolution.';
+        cameraErrorMsg.textContent = msg;
+        cameraError.classList.remove('hidden');
+      }
+    }
+
+    function stopCamera() {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(t => t.stop());
+        cameraStream = null;
+      }
+      cameraVideo.srcObject = null;
+      cameraPlaceholder.classList.remove('hidden');
+      cameraGuide.classList.add('hidden');
+      captureBadge.classList.add('hidden');
+      btnCapture.disabled     = true;
+      btnStopCamera.disabled  = true;
+      btnStartCamera.disabled = false;
+    }
+
+    function captureFrame() {
+      if (!cameraStream || selectedFiles.length >= 4) {
+        if (selectedFiles.length >= 4) alert('Maximum 4 photos reached. Remove one first.');
+        return;
+      }
+
+      // Draw current video frame onto an offscreen canvas
+      const canvas = document.createElement('canvas');
+      canvas.width  = cameraVideo.videoWidth  || 640;
+      canvas.height = cameraVideo.videoHeight || 480;
+      const ctx = canvas.getContext('2d');
+
+      // Un-mirror the captured image (mirror CSS was only for preview)
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(cameraVideo, 0, 0, canvas.width, canvas.height);
+
+      // Flash effect
+      const flash = document.createElement('div');
+      flash.style.cssText = 'position:absolute;inset:0;background:white;opacity:0.7;border-radius:12px;pointer-events:none;transition:opacity 0.3s';
+      cameraVideo.parentElement.appendChild(flash);
+      setTimeout(() => flash.remove(), 350);
+
+      // Convert canvas → File object (same as uploaded image)
+      canvas.toBlob((blob) => {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const file = new File([blob], `capture_${timestamp}.jpg`, { type: 'image/jpeg' });
+        selectedFiles.push(file);
+        renderPreviews();
+        updateCaptureBadge();
+
+        // Auto-stop camera if we hit 4
+        if (selectedFiles.length >= 4) {
+          setTimeout(() => alert('4 photos captured! Click "Search Person" to find matches.'), 100);
+        }
+      }, 'image/jpeg', 0.92);
+    }
+
+    function updateCaptureBadge() {
+      captureBadge.textContent = `${selectedFiles.length} / 4`;
+    }
+
+    // ── Shared preview ─────────────────────────────────────────────────────
+    function renderPreviews() {
+      thumbGrid.innerHTML = '';
+      if (selectedFiles.length === 0) {
+        previewContainer.classList.add('hidden');
+        return;
+      }
+      previewContainer.classList.remove('hidden');
+      selectedFiles.forEach((file, index) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const div = document.createElement('div');
+          div.className = 'relative group rounded-lg overflow-hidden aspect-square border border-slate-700 bg-slate-900';
+          // Camera icon badge for captured photos
+          const isCapture = file.name.startsWith('capture_');
+          div.innerHTML = `
+            <img src="${e.target.result}" class="w-full h-full object-cover">
+            ${isCapture ? '<span class="absolute bottom-1 left-1 text-[9px] bg-indigo-600/80 text-white px-1 rounded"><i class="fa-solid fa-camera"></i></span>' : ''}
+            <button onclick="removeFile(${index})" class="absolute top-1 right-1 bg-red-600/80 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] opacity-0 group-hover:opacity-100 transition">✕</button>
+          `;
+          thumbGrid.appendChild(div);
+        };
+        reader.readAsDataURL(file);
+      });
+      updateCaptureBadge();
+    }
+
+    window.removeFile = function(index) {
+      selectedFiles.splice(index, 1);
+      renderPreviews();
+    };
+
+    window.clearAllFiles = function() {
+      selectedFiles = [];
+      renderPreviews();
+    };
+
+    // ── Stats ──────────────────────────────────────────────────────────────
+    async function loadStats() {
+      try {
+        const res  = await fetch('/api/stats');
+        const data = await res.json();
+        document.getElementById('statPhotos').textContent = data.total_photos || 0;
+        document.getElementById('statFaces').textContent  = data.total_faces  || 0;
+        document.getElementById('statsBadge').classList.remove('hidden');
+      } catch (err) { console.error('Failed to load stats', err); }
+    }
+
+    async function loadAllPhotos() {
+      try {
+        const res    = await fetch('/api/photos?limit=60');
+        const photos = await res.json();
+        renderPhotoGrid(photos, false);
+      } catch (err) { console.error('Failed to load photos', err); }
+    }
+
+    // ── Results grid ───────────────────────────────────────────────────────
+    function renderPhotoGrid(items, isSearchResult = false) {
+      resultsGrid.innerHTML = '';
+      if (!items || items.length === 0) {
+        resultsGrid.innerHTML = `
+          <div class="col-span-full py-16 text-center text-slate-500">
+            <i class="fa-regular fa-folder-open text-4xl mb-3 block"></i>
+            No photos found. Run "Scan &amp; Index Stock" to index existing stock photos.
+          </div>`;
+        return;
+      }
+      items.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'group relative bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg transition hover:border-indigo-500/50 hover:shadow-indigo-500/10 flex flex-col';
+        const photoName = item.numbered_filename || item.filename;
+        let tierBadgeHtml = '';
+        if (isSearchResult && item.tier) {
+          const s = TIER_STYLES[item.tier] || TIER_STYLES.possible;
+          tierBadgeHtml = `
+            <div class="absolute top-2 right-2 flex items-center gap-1 px-2 py-0.5 rounded ${s.bg} backdrop-blur text-[11px] font-bold ${s.text} shadow">
+              <span class="w-1.5 h-1.5 rounded-full ${s.dot} inline-block"></span>
+              ${item.percentage}%
+            </div>
+            <div class="absolute top-8 right-2 px-1.5 py-0.5 rounded ${s.bg} backdrop-blur text-[9px] font-semibold ${s.text} opacity-90">
+              ${item.tier_label}
+            </div>`;
+        }
+        card.innerHTML = `
+          <div class="aspect-square bg-slate-950 overflow-hidden relative">
+            <img src="/api/photos/${photoName}" loading="lazy" class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
+            ${tierBadgeHtml}
+            <div class="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/70 backdrop-blur text-[10px] font-mono text-slate-300">
+              #${item.photo_number || item.id}
+            </div>
+          </div>
+          <div class="p-2.5 flex-1 flex flex-col justify-between">
+            <div>
+              <p class="text-xs font-semibold text-slate-200 truncate">${item.numbered_filename}</p>
+              <p class="text-[10px] text-slate-400 truncate">Original: ${item.original_filename}</p>
+            </div>
+            <div class="mt-2 flex items-center justify-between text-[10px] text-slate-500">
+              <span><i class="fa-solid fa-user text-[9px] mr-1 text-slate-400"></i>${item.face_count || 1} face(s)</span>
+              <a href="/api/photos/${photoName}" target="_blank" class="text-indigo-400 hover:text-indigo-300 font-medium">View</a>
+            </div>
+          </div>`;
+        resultsGrid.appendChild(card);
+      });
+    }
+
+    // ── Search ─────────────────────────────────────────────────────────────
+    btnSearch.addEventListener('click', async () => {
+      if (selectedFiles.length === 0) {
+        alert('Please upload or capture at least 1 reference photo first.');
+        return;
+      }
+
+      // Stop camera automatically when search starts
+      stopCamera();
+
+      loader.classList.remove('hidden');
+      resultsGrid.classList.add('hidden');
+      tierSummary.classList.add('hidden');
+      loaderText.textContent = 'Running 3-level face search...';
+
+      const formData = new FormData();
+      selectedFiles.forEach(f => formData.append('files', f));
+
+      try {
+        const res  = await fetch('/api/search?top_k=100', { method: 'POST', body: formData });
+        const data = await res.json();
+        loader.classList.add('hidden');
+        resultsGrid.classList.remove('hidden');
+
+        if (!res.ok) { alert(data.detail || 'Search failed.'); return; }
+
+        const tc = data.tier_counts || {};
+        tierSummary.classList.remove('hidden');
+        const showBadge = (id, countId, count) => {
+          const el = document.getElementById(id);
+          document.getElementById(countId).textContent = count;
+          if (count > 0) el.classList.remove('hidden'), el.classList.add('flex');
+          else el.classList.add('hidden');
+        };
+        showBadge('badgeStrong',   'countStrong',   tc.strong   || 0);
+        showBadge('badgeLikely',   'countLikely',   tc.likely   || 0);
+        showBadge('badgePossible', 'countPossible', tc.possible || 0);
+
+        const total = data.total_matches || 0;
+        resultStatus.textContent = total > 0
+          ? `Found ${total} matching photo${total !== 1 ? 's' : ''} across all confidence levels.`
+          : 'No matches found. Try a different or clearer reference photo.';
+
+        renderPhotoGrid(data.results, true);
+      } catch (err) {
+        loader.classList.add('hidden');
+        resultsGrid.classList.remove('hidden');
+        alert('An error occurred while searching: ' + err.message);
+      }
+    });
+
+    // ── Indexing ───────────────────────────────────────────────────────────
+    btnIndex.addEventListener('click', async () => {
+      if (!confirm('Start indexing photos from stock folder? This will safely copy photos with numbered names and extract face embeddings.')) return;
+      loader.classList.remove('hidden');
+      resultsGrid.classList.add('hidden');
+      loaderText.textContent = 'Scanning stock folder and generating face embeddings (InsightFace)...';
+      try {
+        const res  = await fetch('/api/index', { method: 'POST' });
+        const data = await res.json();
+        loader.classList.add('hidden');
+        resultsGrid.classList.remove('hidden');
+        if (res.ok) {
+          alert(`Indexing completed!\nNew: ${data.data.newly_processed_photos} photos, ${data.data.newly_detected_faces} faces.\nTotal: ${data.data.total_photos} photos.`);
+          await loadStats();
+          await loadAllPhotos();
+        } else {
+          alert('Indexing failed: ' + (data.detail || 'Unknown error'));
+        }
+      } catch (err) {
+        loader.classList.add('hidden');
+        resultsGrid.classList.remove('hidden');
+        alert('Error during indexing: ' + err.message);
+      }
+    });
+
+    // ── Stop camera on page unload ─────────────────────────────────────────
+    window.addEventListener('beforeunload', stopCamera);
+
+    // ── Init ───────────────────────────────────────────────────────────────
+    loadStats();
+    loadAllPhotos();
+  </script>
+</body>
+</html>
