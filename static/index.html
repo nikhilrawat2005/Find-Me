@@ -454,25 +454,35 @@
 
     // ── Auto-capture with visual feedback ─────────────────────────────────
     async function triggerAutoCapture() {
-      if (captureInProgress || selectedFiles.length >= 4) return;
+      const MAX_CAPTURES = 3; // 3 clear captures are ideal and faster
+      if (captureInProgress || selectedFiles.length >= MAX_CAPTURES) return;
       captureInProgress = true;
       setOvalState('capturing');
 
       // Brief "flash" feedback then capture
       await new Promise(r => setTimeout(r, 150));
-      captureFrame(true); // true = called from auto
+      await captureFrameAsync(true); // wait until image blob is fully saved into selectedFiles
 
-      // Cooldown before next detection
-      await new Promise(r => setTimeout(r, CAPTURE_COOLDOWN));
-      captureInProgress = false;
-
-      if (selectedFiles.length < 4 && cameraStream) {
-        setOvalState('idle');
-        holdFrames = 0;
-      } else if (selectedFiles.length >= 4) {
+      if (selectedFiles.length < MAX_CAPTURES && cameraStream) {
+        // Cooldown before next angle capture
+        await new Promise(r => setTimeout(r, CAPTURE_COOLDOWN));
+        captureInProgress = false;
+        if (selectedFiles.length < MAX_CAPTURES && cameraStream) {
+          setOvalState('idle');
+          holdFrames = 0;
+        }
+      } else if (selectedFiles.length >= MAX_CAPTURES) {
         stopDetectionLoops();
-        document.getElementById('autoStatusText').innerHTML =
-          '<i class="fa-solid fa-check-circle mr-1"></i>4 captures done! Click Search Person.';
+        const statusEl = document.getElementById('autoStatusText');
+        if (statusEl) {
+          statusEl.innerHTML =
+            '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Captures complete! Auto-searching...';
+        }
+        setOvalState('capturing');
+        setTimeout(() => {
+          stopCamera();
+          btnSearch.click(); // Automatically trigger search!
+        }, 600);
       }
     }
 
@@ -500,32 +510,40 @@
     }
 
     function captureFrame(fromAuto = false) {
-      if (!cameraStream || selectedFiles.length >= 4) {
-        if (!fromAuto && selectedFiles.length >= 4) alert('Maximum 4 photos reached. Remove one first.');
-        return;
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width  = cameraVideo.videoWidth  || 640;
-      canvas.height = cameraVideo.videoHeight || 480;
-      const ctx = canvas.getContext('2d');
-      // Un-mirror (CSS mirror was only for preview feel)
-      ctx.translate(canvas.width, 0);
-      ctx.scale(-1, 1);
-      ctx.drawImage(cameraVideo, 0, 0, canvas.width, canvas.height);
+      captureFrameAsync(fromAuto);
+    }
 
-      // Flash effect
-      const flash = document.createElement('div');
-      flash.style.cssText = 'position:absolute;inset:0;background:white;opacity:0.75;border-radius:12px;pointer-events:none;transition:opacity 0.3s ease';
-      cameraVideo.parentElement.appendChild(flash);
-      requestAnimationFrame(() => { flash.style.opacity = '0'; setTimeout(() => flash.remove(), 350); });
+    function captureFrameAsync(fromAuto = false) {
+      return new Promise((resolve) => {
+        if (!cameraStream || selectedFiles.length >= 4) {
+          if (!fromAuto && selectedFiles.length >= 4) alert('Maximum 4 photos reached. Remove one first.');
+          resolve(false);
+          return;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width  = cameraVideo.videoWidth  || 640;
+        canvas.height = cameraVideo.videoHeight || 480;
+        const ctx = canvas.getContext('2d');
+        // Un-mirror (CSS mirror was only for preview feel)
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(cameraVideo, 0, 0, canvas.width, canvas.height);
 
-      canvas.toBlob((blob) => {
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const file = new File([blob], `capture_${timestamp}.jpg`, { type: 'image/jpeg' });
-        selectedFiles.push(file);
-        renderPreviews();
-        updateCaptureBadge();
-      }, 'image/jpeg', 0.92);
+        // Flash effect
+        const flash = document.createElement('div');
+        flash.style.cssText = 'position:absolute;inset:0;background:white;opacity:0.75;border-radius:12px;pointer-events:none;transition:opacity 0.3s ease';
+        cameraVideo.parentElement.appendChild(flash);
+        requestAnimationFrame(() => { flash.style.opacity = '0'; setTimeout(() => flash.remove(), 350); });
+
+        canvas.toBlob((blob) => {
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const file = new File([blob], `capture_${timestamp}.jpg`, { type: 'image/jpeg' });
+          selectedFiles.push(file);
+          renderPreviews();
+          updateCaptureBadge();
+          resolve(true);
+        }, 'image/jpeg', 0.92);
+      });
     }
 
     function updateCaptureBadge() {
