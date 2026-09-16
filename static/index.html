@@ -27,20 +27,31 @@
       </div>
     </div>
     <div class="flex items-center space-x-3">
-      <div id="statsBadge" class="hidden sm:flex items-center space-x-3 bg-slate-800/80 border border-slate-700/60 px-3.5 py-1.5 rounded-full text-xs text-slate-300">
+      <!-- Active Event Selector -->
+      <div class="flex items-center bg-slate-800/90 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs shadow-inner">
+        <i class="fa-solid fa-calendar-days text-indigo-400 mr-2"></i>
+        <span class="text-slate-400 mr-1.5 hidden sm:inline">Event:</span>
+        <select id="eventSelector" onchange="onEventChanged()" class="bg-transparent text-slate-100 font-semibold focus:outline-none cursor-pointer text-xs pr-1">
+          <option value="" class="bg-slate-900 text-slate-200">All Events</option>
+        </select>
+      </div>
+
+      <div id="statsBadge" class="hidden md:flex items-center space-x-3 bg-slate-800/80 border border-slate-700/60 px-3 py-1.5 rounded-full text-xs text-slate-300">
         <span><i class="fa-solid fa-images text-indigo-400 mr-1.5"></i><strong id="statPhotos">0</strong> Photos</span>
         <span class="text-slate-600">|</span>
         <span><i class="fa-solid fa-id-badge text-purple-400 mr-1.5"></i><strong id="statFaces">0</strong> Faces</span>
       </div>
+
       <!-- Local Stock Scan Button -->
-      <button id="btnIndex" title="Scan local stock/ folder" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition rounded-lg text-xs font-semibold flex items-center space-x-2 shadow-sm active:scale-95 text-slate-200">
+      <button id="btnIndex" title="Scan local stock/ folder" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition rounded-lg text-xs font-semibold flex items-center space-x-1.5 shadow-sm active:scale-95 text-slate-300">
         <i class="fa-solid fa-folder"></i>
-        <span>Scan Local Stock</span>
+        <span class="hidden sm:inline">Scan Local</span>
       </button>
-      <!-- Google Drive Sync Button -->
-      <button id="btnOpenGDriveModal" title="Sync from connected Google Drive" class="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 transition rounded-lg text-xs font-semibold flex items-center space-x-2 shadow-md shadow-emerald-600/20 active:scale-95 text-white">
+
+      <!-- Sync / Add Event Button -->
+      <button id="btnOpenGDriveModal" title="Sync or Add Event from Google Drive" class="px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 transition rounded-lg text-xs font-semibold flex items-center space-x-2 shadow-md shadow-emerald-600/20 active:scale-95 text-white">
         <i class="fa-brands fa-google-drive text-sm"></i>
-        <span>Google Drive Sync</span>
+        <span>Add / Sync Event</span>
       </button>
     </div>
   </header>
@@ -296,51 +307,46 @@
           </div>
         </div>
 
+        <!-- Event Name (Optional / Auto-detected) -->
+        <div class="space-y-1.5">
+          <label for="gdriveEventNameInput" class="block font-semibold text-slate-200">
+            Event Name <span class="text-[10px] text-slate-400 font-normal">(Optional - auto-detected from Drive folder)</span>
+          </label>
+          <input type="text" id="gdriveEventNameInput" placeholder="e.g. Rahul Wedding 2026, Birthday Party, etc."
+            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-xs">
+        </div>
+
         <!-- Folder ID / URL input -->
         <div class="space-y-1.5">
           <label for="gdriveFolderInput" class="block font-semibold text-slate-200">
-            Google Drive Folder URL or Folder ID
+            Google Drive Folder Link or Folder ID
           </label>
           <input type="text" id="gdriveFolderInput" placeholder="https://drive.google.com/drive/folders/1abc... or 1abc..."
             class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-xs font-mono">
           <p class="text-[11px] text-slate-400 leading-relaxed">
-            Folder ko Service Account email ke saath share karein (Editor permission for rename/cleanup).
+            Folder ko Service Account email ke saath share karein (Editor permission zaroori hai).
           </p>
         </div>
 
-        <!-- Options: Clean duplicates & In-Memory badge -->
-        <div class="space-y-2 bg-slate-950/40 border border-slate-800 p-3 rounded-xl">
-          <label class="flex items-center space-x-2.5 cursor-pointer">
-            <input type="checkbox" id="chkAutoDeleteDupes" checked class="w-4 h-4 rounded text-emerald-600 bg-slate-900 border-slate-700 focus:ring-0">
-            <span class="text-slate-300 font-medium">Auto-Delete Same Name / Duplicate Files in Drive</span>
-          </label>
-          <div class="flex items-center text-[10px] text-emerald-400 font-mono pl-6">
-            <i class="fa-solid fa-bolt mr-1"></i> In-Memory Stream: Photos disk par download nahi hongi, sirf embeddings save honge.
+        <!-- Autonomous Pipeline Highlights -->
+        <div class="space-y-2 bg-slate-950/60 border border-slate-800 p-3.5 rounded-xl text-slate-300">
+          <div class="text-[11px] font-bold text-emerald-400 flex items-center gap-1.5">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> 1-Click Autonomous Event Pipeline:
           </div>
-        </div>
-
-        <!-- One-Click Drive Tools (Rename & Duplicate Scan) -->
-        <div class="space-y-2 border-t border-slate-800 pt-3">
-          <span class="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">Drive Folder Tools</span>
-          <div class="grid grid-cols-2 gap-2">
-            <!-- 1-Click Rename button -->
-            <button type="button" onclick="triggerDriveRename()" id="btnDriveRename" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-95">
-              <i class="fa-solid fa-pen-to-square text-indigo-400"></i>
-              <span>1-Click Rename Drive</span>
-            </button>
-            <!-- Check Duplicates button -->
-            <button type="button" onclick="triggerDriveDupesCheck()" id="btnDriveDupes" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-95">
-              <i class="fa-solid fa-trash-can text-red-400"></i>
-              <span>Check &amp; Clean Dupes</span>
-            </button>
-          </div>
+          <ul class="text-[11px] text-slate-400 space-y-1 list-disc list-inside">
+            <li><strong class="text-slate-300">Auto-Trash Duplicates:</strong> Same name/hash files Drive se trash ho jayengi.</li>
+            <li><strong class="text-slate-300">Auto-Rename:</strong> Files cleanly <code class="text-indigo-300 font-mono">photo_0001.jpg</code>... format mein rename hongi.</li>
+            <li><strong class="text-slate-300">Direct In-Memory Indexing:</strong> Disk bhare bina RAM mein face embeddings banengi.</li>
+            <li><strong class="text-slate-300">Event Isolated:</strong> Har event ka data alag save hoga!</li>
+          </ul>
         </div>
 
         <!-- Progress or Logs -->
         <div id="gdriveProgressBox" class="hidden p-3 rounded-xl bg-emerald-950/30 border border-emerald-800/40 text-emerald-300 text-xs flex items-center gap-2">
           <i class="fa-solid fa-arrows-rotate animate-spin text-emerald-400 shrink-0"></i>
-          <span id="gdriveProgressMsg">Syncing photos from Drive...</span>
+          <span id="gdriveProgressMsg">Syncing event photos from Drive...</span>
         </div>
+
 
 
       </div>
@@ -980,7 +986,11 @@
       selectedFiles.forEach(f => formData.append('files', f));
 
       try {
-        const res  = await fetch('/api/search?top_k=100', { method: 'POST', body: formData });
+        let searchUrl = '/api/search?top_k=100';
+        if (currentEventId) {
+          searchUrl += `&event_id=${encodeURIComponent(currentEventId)}`;
+        }
+        const res  = await fetch(searchUrl, { method: 'POST', body: formData });
         const data = await res.json();
         loader.classList.add('hidden');
         resultsGrid.classList.remove('hidden');
@@ -1174,39 +1184,51 @@
 
     async function startGDriveSync() {
       const folderVal = gdriveFolderInput.value.trim();
+      const eventNameInput = document.getElementById('gdriveEventNameInput');
+      const customName = eventNameInput ? eventNameInput.value.trim() : '';
+
       if (!folderVal) {
         alert('Please enter a Google Drive folder link or folder ID.');
         return;
       }
-      const autoClean = document.getElementById('chkAutoDeleteDupes').checked;
 
       btnStartGDriveSync.disabled = true;
       gdriveProgressBox.classList.remove('hidden');
-      gdriveProgressMsg.textContent = 'Contacting Google Drive & extracting face embeddings in-memory...';
+      gdriveProgressMsg.textContent = 'Running 1-Click Event Pipeline (Clean Dupes ➔ Auto-Rename ➔ In-Memory Indexing)...';
 
       try {
-        const res = await fetch(`/api/gdrive/sync?folder_id=${encodeURIComponent(folderVal)}&clean_duplicates=${autoClean}`, {
-          method: 'POST'
-        });
+        let syncUrl = `/api/events/sync?folder_id=${encodeURIComponent(folderVal)}`;
+        if (customName) {
+          syncUrl += `&name=${encodeURIComponent(customName)}`;
+        }
+
+        const res = await fetch(syncUrl, { method: 'POST' });
         const data = await res.json();
         gdriveProgressBox.classList.add('hidden');
         btnStartGDriveSync.disabled = false;
 
         if (res.ok) {
           const d = data.data;
-          alert(`Google Drive Sync Completed (Direct In-Memory)!\n\nNew Photos Indexed: ${d.newly_processed_photos}\nSkipped (Already Indexed): ${d.skipped_existing_photos}\nNew Faces Detected: ${d.newly_detected_faces}\nTotal Photos in System: ${d.total_photos}`);
+          alert(`🎉 Event Synchronized Successfully!\n\nEvent: "${d.event_name}"\nDuplicates Trashed: ${d.duplicates_removed}\nFiles Renamed on Drive: ${d.files_renamed}\nNew Photos Indexed: ${d.newly_processed_photos}\nTotal Event Photos: ${d.total_photos}`);
           closeGDriveModal();
+          
           await loadStats();
-          filterBySource('gdrive');
+          await loadEvents();
+          
+          // Auto-select newly synced event
+          currentEventId = d.event_id;
+          document.getElementById('eventSelector').value = currentEventId;
+          await loadAllPhotos();
         } else {
-          alert('Google Drive Sync Failed:\n' + (data.detail || 'Unknown error'));
+          alert('Event Sync Failed:\n' + (data.detail || 'Unknown error'));
         }
       } catch (err) {
         gdriveProgressBox.classList.add('hidden');
         btnStartGDriveSync.disabled = false;
-        alert('Network error during Google Drive sync: ' + err.message);
+        alert('Network error during Event sync: ' + err.message);
       }
     }
+
 
     async function triggerDriveRename() {
       const folderVal = gdriveFolderInput.value.trim();
@@ -1276,6 +1298,7 @@
 
     // ── Init ───────────────────────────────────────────────────────────────
     loadStats();
+    loadEvents();
     loadAllPhotos();
   </script>
 </body>

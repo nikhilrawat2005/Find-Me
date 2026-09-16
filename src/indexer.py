@@ -1,8 +1,9 @@
 import os
 import shutil
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Optional, Dict, Any
 import numpy as np
+
 import faiss
 from tqdm import tqdm
 
@@ -12,6 +13,8 @@ from src.database import (
     get_photo_by_original_name,
     get_photo_by_gdrive_id,
     get_next_photo_number,
+    get_next_event_photo_number,
+    create_or_get_event,
     insert_photo,
     insert_face,
     get_stats
@@ -44,12 +47,13 @@ class StockIndexer:
 
     def index_stock_photos(self) -> dict:
         """
-        Processes photos from local STOCK_DIR without altering any file in STOCK_DIR.
-        1. Numbering: Copies each unindexed image to PROCESSED_PHOTOS_DIR with clean sequential numbering (e.g. photo_0001.jpg).
-        2. Embedding: Extracts face embeddings using InsightFace and adds them into FAISS index & SQLite.
+        Processes photos from local STOCK_DIR into the default 'Local Stock Showcase' event.
         """
         if not STOCK_DIR.exists():
             raise FileNotFoundError(f"Stock directory not found: {STOCK_DIR}")
+
+        default_event = create_or_get_event(name="Local Stock Showcase", folder_id="local_stock", source_type="local")
+        event_id = default_event["id"]
 
         valid_extensions = {".jpg", ".jpeg", ".png", ".webp"}
         stock_files = sorted([
@@ -57,7 +61,7 @@ class StockIndexer:
             if p.is_file() and p.suffix.lower() in valid_extensions
         ])
 
-        print(f"Found {len(stock_files)} photos in stock directory.")
+        print(f"Found {len(stock_files)} photos in local stock directory.")
 
         processed_count = 0
         skipped_count = 0
@@ -66,24 +70,18 @@ class StockIndexer:
         for file_path in tqdm(stock_files, desc="Indexing Local Stock Photos"):
             orig_name = file_path.name
             
-            # Check if photo was already processed
             existing = get_photo_by_original_name(orig_name)
             if existing:
                 skipped_count += 1
                 continue
 
-            # Task 1: Numbering
-            next_num = get_next_photo_number()
+            next_num = get_next_event_photo_number(event_id)
             numbered_filename = f"photo_{next_num:04d}{file_path.suffix.lower()}"
             dest_path = PROCESSED_PHOTOS_DIR / numbered_filename
 
-            # Safe copy (Original remains 100% untouched)
             shutil.copy2(file_path, dest_path)
-
-            # Task 2: Embedding conversion
             faces = self.face_engine.extract_faces_from_file(str(dest_path))
             
-            # Record photo in database
             photo_id = insert_photo(
                 photo_number=next_num,
                 numbered_filename=numbered_filename,
@@ -91,19 +89,16 @@ class StockIndexer:
                 original_path=str(file_path),
                 stored_path=str(dest_path),
                 face_count=len(faces),
-                source_type="local"
+                source_type="local",
+                event_id=event_id
             )
 
-            # Add each detected face embedding to FAISS and DB
             for face in faces:
                 emb = face["embedding"]
-                vector_idx = self.index.ntotal  # Current position in FAISS
-                
-                # Add to FAISS index
+                vector_idx = self.index.ntotal
                 emb_matrix = np.expand_dims(emb, axis=0).astype(np.float32)
                 self.index.add(emb_matrix)
 
-                # Record in database
                 insert_face(
                     photo_id=photo_id,
                     vector_index=vector_idx,
@@ -114,98 +109,105 @@ class StockIndexer:
 
             processed_count += 1
 
-        # Save FAISS index
         self.save_index()
-
         stats = get_stats()
-        result = {
+        return {
             "source": "local",
+            "event_id": event_id,
+            "event_name": default_event["name"],
             "newly_processed_photos": processed_count,
             "skipped_existing_photos": skipped_count,
             "newly_detected_faces": new_faces_count,
             "total_photos": stats["total_photos"],
             "total_faces": stats["total_faces"],
-            "local_photos": stats.get("local_photos", 0),
-            "gdrive_photos": stats.get("gdrive_photos", 0),
             "faiss_total_vectors": self.index.ntotal
         }
-        print(f"Local indexing completed: {result}")
-        return result
 
-    def index_gdrive_photos(self, folder_id: str, clean_duplicates_first: bool = True) -> dict:
+    def sync_event_from_gdrive(self, folder_id: str, custom_event_name: Optional[str] = None) -> dict:
         """
-        Fetches photos directly from a Google Drive folder.
-        - Checks for and removes duplicate files on Google Drive (if enabled).
-        - Direct in-memory embedding extraction: Images are NOT downloaded to disk;
-          they are streamed into RAM, face embeddings are extracted into FAISS & DB.
+        Complete 1-Click Autonomous Event Pipeline:
+        1. Fetches Folder Name from Google Drive (or uses custom name).
+        2. Detects & auto-trashes/unlinks duplicate / same-name files.
+        3. Checks naming order — auto-renames all Drive files to sequential format (photo_0001.jpg...).
+        4. In-Memory Streaming: Extracts face embeddings without saving files to disk.
+        5. Associates all data with this specific Event in SQLite & FAISS.
         """
-        duplicates_report = None
-        if clean_duplicates_first:
-            try:
-                duplicates_report = self.gdrive_service.find_and_clean_duplicates(folder_id, auto_delete=True)
-                print(f"Duplicate cleanup: Found {duplicates_report['duplicates_found']}, deleted {duplicates_report['duplicates_deleted']}")
-            except Exception as e:
-                print(f"[Warning] Duplicate check skipped/failed: {e}")
+        import cv2
 
-        folder_files = self.gdrive_service.list_folder_photos(folder_id)
-        print(f"Found {len(folder_files)} photo(s) in Google Drive folder to index.")
+        cleaned_folder_id = self.gdrive_service.extract_folder_id(folder_id)
+
+        # 1. Determine Event Name
+        if custom_event_name and custom_event_name.strip():
+            event_name = custom_event_name.strip()
+        else:
+            folder_info = self.gdrive_service.get_folder_details(cleaned_folder_id)
+            event_name = folder_info.get("name") or f"Event_{cleaned_folder_id[:6]}"
+
+        event = create_or_get_event(name=event_name, folder_id=cleaned_folder_id, source_type="gdrive")
+        event_id = event["id"]
+        print(f"=== Starting Autonomous Sync for Event: '{event_name}' (ID: {event_id}) ===")
+
+        # 2. Duplicate Detection & Auto-Trash
+        dup_report = self.gdrive_service.find_and_clean_duplicates(cleaned_folder_id, auto_delete=True)
+        print(f"Duplicate cleanup: {dup_report['duplicates_found']} found, {dup_report['duplicates_deleted']} cleaned.")
+
+        # 3. Automatic Drive Folder Sequential Renaming
+        rename_report = self.gdrive_service.batch_rename_folder(cleaned_folder_id, prefix="photo")
+        print(f"Drive Renaming: {rename_report['renamed_count']} files organized to photo_XXXX format.")
+
+        # 4. Fetch Cleaned & Renamed File List
+        folder_files = self.gdrive_service.list_folder_photos(cleaned_folder_id)
+        print(f"Found {len(folder_files)} photo(s) in Drive event folder ready for in-memory indexing.")
 
         processed_count = 0
         skipped_count = 0
         new_faces_count = 0
 
-        import cv2
-
-        for file_meta in tqdm(folder_files, desc="Indexing Drive Photos (In-Memory)"):
+        for file_meta in tqdm(folder_files, desc=f"Indexing Event '{event_name}' (In-Memory)"):
             gdrive_id = file_meta["id"]
-            orig_name = file_meta.get("name", f"{gdrive_id}.jpg")
+            current_drive_name = file_meta.get("name", f"{gdrive_id}.jpg")
             
-            # Check if this Google Drive file was already indexed
             existing = get_photo_by_gdrive_id(gdrive_id)
             if existing:
                 skipped_count += 1
                 continue
 
-            # In-memory stream: no permanent disk file created
+            # Stream photo directly into RAM
             try:
                 raw_bytes = self.gdrive_service.get_photo_bytes(gdrive_id)
                 nparr = np.frombuffer(raw_bytes, np.uint8)
                 img_bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
                 if img_bgr is None:
-                    print(f"[Warning] Could not decode image: {orig_name}")
+                    print(f"[Warning] Could not decode image {current_drive_name}")
                     continue
             except Exception as dl_err:
-                print(f"[Warning] Failed to fetch image {orig_name}: {dl_err}")
+                print(f"[Warning] Could not stream image {current_drive_name}: {dl_err}")
                 continue
 
-            # Sequential numbering in metadata
-            next_num = get_next_photo_number()
-            ext = Path(orig_name).suffix.lower()
-            if not ext or ext not in {".jpg", ".jpeg", ".png", ".webp"}:
-                ext = ".jpg"
+            # Event photo numbering starts clean for each event
+            next_num = get_next_event_photo_number(event_id)
+            ext = Path(current_drive_name).suffix.lower() or ".jpg"
             numbered_filename = f"photo_{next_num:04d}{ext}"
 
-            # Extract face embeddings directly from memory array
+            # Extract face embeddings in memory
             faces = self.face_engine.extract_faces_from_image(img_bgr)
-
-            # Record photo in database with source_type='gdrive', gdrive_file_id, and web link
             gdrive_link = file_meta.get("webViewLink") or f"https://drive.google.com/file/d/{gdrive_id}/view"
+
             photo_id = insert_photo(
                 photo_number=next_num,
                 numbered_filename=numbered_filename,
-                original_filename=orig_name,
-                original_path=f"gdrive://{gdrive_id}/{orig_name}",
+                original_filename=current_drive_name,
+                original_path=f"gdrive://{cleaned_folder_id}/{current_drive_name}",
                 stored_path=gdrive_link,
                 face_count=len(faces),
                 source_type="gdrive",
-                gdrive_file_id=gdrive_id
+                gdrive_file_id=gdrive_id,
+                event_id=event_id
             )
 
-            # Add each detected face embedding to FAISS and DB
             for face in faces:
                 emb = face["embedding"]
                 vector_idx = self.index.ntotal
-
                 emb_matrix = np.expand_dims(emb, axis=0).astype(np.float32)
                 self.index.add(emb_matrix)
 
@@ -220,24 +222,20 @@ class StockIndexer:
             processed_count += 1
 
         self.save_index()
-
-
         stats = get_stats()
-        result = {
+
+        return {
             "source": "gdrive",
+            "event_id": event_id,
+            "event_name": event_name,
+            "duplicates_removed": dup_report.get("duplicates_deleted", 0),
+            "files_renamed": rename_report.get("renamed_count", 0),
             "newly_processed_photos": processed_count,
             "skipped_existing_photos": skipped_count,
             "newly_detected_faces": new_faces_count,
             "total_photos": stats["total_photos"],
             "total_faces": stats["total_faces"],
-            "local_photos": stats.get("local_photos", 0),
-            "gdrive_photos": stats.get("gdrive_photos", 0),
             "faiss_total_vectors": self.index.ntotal
         }
-        print(f"Google Drive indexing completed: {result}")
-        return result
 
-if __name__ == "__main__":
-    indexer = StockIndexer()
-    indexer.index_stock_photos()
 

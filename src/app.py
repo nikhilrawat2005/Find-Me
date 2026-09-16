@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, Response
 
 from src.config import BASE_DIR, PROCESSED_PHOTOS_DIR, SIMILARITY_THRESHOLD
-from src.database import get_stats, get_all_photos, get_photo_by_filename
+from src.database import get_stats, get_all_photos, get_photo_by_filename, get_all_events, get_event_by_id
 from src.indexer import StockIndexer
 from src.searcher import FaceSearcher
 
@@ -38,6 +38,13 @@ def read_root():
         return FileResponse(index_file)
     return {"message": "Face Recognition Photo Search System API is running."}
 
+@app.get("/api/events")
+def api_events():
+    """
+    Returns list of all events with photo and face counts.
+    """
+    return get_all_events()
+
 @app.get("/api/stats")
 def api_stats():
     stats = get_stats()
@@ -45,8 +52,9 @@ def api_stats():
     return stats
 
 @app.get("/api/photos")
-def api_photos(limit: int = 100, offset: int = 0, source: Optional[str] = None):
-    return get_all_photos(limit=limit, offset=offset, source_type=source)
+def api_photos(limit: int = 100, offset: int = 0, source: Optional[str] = None, event_id: Optional[int] = None):
+    return get_all_photos(limit=limit, offset=offset, source_type=source, event_id=event_id)
+
 
 @app.get("/api/photos/{filename}")
 def api_get_photo(filename: str):
@@ -82,16 +90,36 @@ def api_gdrive_status():
     """
     return indexer.gdrive_service.check_connection()
 
+@app.post("/api/events/sync")
+def api_events_sync(
+    folder_id: str = Query(..., description="Google Drive Folder URL or Folder ID"),
+    name: Optional[str] = Query(default=None, description="Optional custom name for the Event (e.g. 'Rahul Wedding 2026')")
+):
+    """
+    Autonomous 1-Click Event Pipeline:
+    1. Fetches Folder Name from Drive (or uses custom name).
+    2. Auto-removes duplicate files.
+    3. Auto-renames Drive files sequentially (photo_0001.jpg...).
+    4. Extracts face embeddings in-memory directly into FAISS & binds to this Event.
+    """
+    try:
+        result = indexer.sync_event_from_gdrive(folder_id=folder_id, custom_event_name=name)
+        searcher.reload_index()
+        return {"status": "success", "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @app.post("/api/gdrive/sync")
 def api_gdrive_sync(
     folder_id: str = Query(..., description="Google Drive Folder URL or Folder ID"),
-    clean_duplicates: bool = Query(default=True, description="Automatically detect and delete duplicate files in Drive")
+    clean_duplicates: bool = Query(default=True, description="Automatically detect and delete duplicate files in Drive"),
+    event_name: Optional[str] = Query(default=None, description="Optional custom event name")
 ):
     """
-    Scans Google Drive folder, removes duplicates, and indexes face embeddings directly in-memory.
+    Autonomous event sync alias.
     """
     try:
-        result = indexer.index_gdrive_photos(folder_id=folder_id, clean_duplicates_first=clean_duplicates)
+        result = indexer.sync_event_from_gdrive(folder_id=folder_id, custom_event_name=event_name)
         searcher.reload_index()
         return {"status": "success", "data": result}
     except Exception as e:
@@ -130,13 +158,15 @@ def api_gdrive_clean_duplicates(
 @app.post("/api/search")
 async def api_search(
     files: List[UploadFile] = File(...),
-    top_k: int = Query(default=100, ge=1, le=300)
+    top_k: int = Query(default=100, ge=1, le=300),
+    event_id: Optional[int] = Query(default=None, description="Filter search to a specific event ID")
 ):
     """
     Receives 1 to 4 reference photos and returns matching photos across 3 confidence tiers:
       Strong   (>= 0.52) — near-certain match
       Likely   (>= 0.40) — probable match
       Possible (>= 0.28) — distant / challenging match
+    Optionally scoped to a specific event.
     """
     if not files or len(files) == 0:
         raise HTTPException(status_code=400, detail="At least 1 reference photo is required.")
@@ -155,7 +185,9 @@ async def api_search(
     search_output = searcher.search_by_reference_images(
         images_bgr=images_bgr,
         top_k=top_k,
+        event_id=event_id
     )
+
 
     return {
         "query_images_count": len(images_bgr),

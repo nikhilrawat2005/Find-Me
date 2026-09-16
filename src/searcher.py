@@ -39,10 +39,12 @@ class FaceSearcher:
         self,
         images_bgr: List[np.ndarray],
         top_k: int = 100,
+        event_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         3-Tier face search:
         - Searches FAISS at the lowest threshold (0.28) to cast a wide net.
+        - Optionally filters results by event_id.
         - Every returned result is classified into one of three tiers based on
           its cosine similarity score:
             Strong   (>= 0.52) — near-certain match
@@ -93,8 +95,9 @@ class FaceSearcher:
         valid_indices = [m[0] for m in valid_matches]
         score_map     = {m[0]: m[1] for m in valid_matches}
 
-        # ── Fetch metadata ─────────────────────────────────────────────────
-        db_faces = get_faces_by_vector_indices(valid_indices)
+        # ── Fetch metadata (filtered by event_id if provided) ──────────────
+        db_faces = get_faces_by_vector_indices(valid_indices, event_id=event_id)
+
 
         # Group by photo — keep highest score per photo
         photos_dict: Dict[int, Dict[str, Any]] = {}

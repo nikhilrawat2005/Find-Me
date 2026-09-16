@@ -128,10 +128,25 @@ class GDriveService:
                 "account_email": self.account_email
             }
 
+    def get_folder_details(self, folder_id: str) -> Dict[str, Any]:
+        """
+        Retrieves folder name and metadata from Google Drive.
+        """
+        if not self.authenticate():
+            raise RuntimeError("Google Drive is not authenticated.")
+        
+        cleaned_id = self.extract_folder_id(folder_id)
+        try:
+            folder = self.service.files().get(fileId=cleaned_id, fields='id, name, mimeType').execute()
+            return folder
+        except Exception as e:
+            return {"id": cleaned_id, "name": f"Event_{cleaned_id[:6]}"}
+
     def list_folder_photos(self, folder_id: str) -> List[Dict[str, Any]]:
         """
         Lists all image files in the specified folder sorted by creation/name.
         """
+
         if not self.authenticate():
             raise RuntimeError("Google Drive is not authenticated. Please provide credentials.json.")
 
