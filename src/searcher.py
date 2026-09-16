@@ -112,6 +112,8 @@ class FaceSearcher:
                     "original_filename": face_info["original_filename"],
                     "stored_path":       face_info["stored_path"],
                     "face_count":        face_info["face_count"],
+                    "source_type":       face_info.get("source_type", "local"),
+                    "gdrive_file_id":    face_info.get("gdrive_file_id"),
                     "similarity_score":  round(similarity, 4),
                     "percentage":        round(similarity * 100, 1),
                     "tier":              tier_info["tier"],

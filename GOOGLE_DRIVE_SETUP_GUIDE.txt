@@ -1,0 +1,95 @@
+================================================================================
+          FIND ME - GOOGLE DRIVE CONNECTION & SETUP GUIDE
+================================================================================
+
+Aapne manga tha ki humesha ek hi Google Drive account se connect rahe bina 
+bar-bar login mangne ke. Iske liye Google Cloud ka "Service Account" sabse best, 
+secure aur reliable tarika hai (OAuth token bhi supported hai).
+
+Neeche step-by-step complete guide di gayi hai:
+
+--------------------------------------------------------------------------------
+STEP 1: GOOGLE CLOUD CONSOLE MEIN PROJECT BANANA
+--------------------------------------------------------------------------------
+1. Apne browser mein open karein:
+   https://console.cloud.google.com/
+2. Agar pehle se project nahi hai, toh upar left drop-down par click karein aur 
+   "New Project" create karein (jaise: FindMe-App).
+3. Project select kar lein.
+
+--------------------------------------------------------------------------------
+STEP 2: GOOGLE DRIVE API ENABLE KARNA
+--------------------------------------------------------------------------------
+1. Google Cloud Console ke search bar mein type karein:
+   "Google Drive API"
+2. Google Drive API par click karein aur "ENABLE" button dabayein.
+
+--------------------------------------------------------------------------------
+STEP 3: SERVICE ACCOUNT CREATE KARNA (DEDICATED ACCOUNT)
+--------------------------------------------------------------------------------
+1. Left navigation menu (3 lines) -> "APIs & Services" -> "Credentials" par jayein.
+2. Upar "+ CREATE CREDENTIALS" button par click karein aur select karein:
+   "Service account"
+3. Service Account Details bharein:
+   - Service account name: `findme-drive-bot` (kuch bhi rakh sakte hain)
+   - Service account ID: auto-fill ho jayegi
+   - Click "CREATE AND CONTINUE"
+4. Role (Optional): Default rehne dein, click "CONTINUE", then click "DONE".
+5. Ab "Credentials" page par aapko "Service Accounts" table mein naya account dikhega.
+   Uska email address copy kar lijiye (example: `findme-drive-bot@project-123.iam.gserviceaccount.com`).
+
+--------------------------------------------------------------------------------
+STEP 4: SERVICE ACCOUNT KI KEY (credentials.json) DOWNLOAD KARNA
+--------------------------------------------------------------------------------
+1. Us service account ke email par click karein.
+2. Upar tabs mein "KEYS" tab par click karein.
+3. "ADD KEY" -> "Create new key" select karein.
+4. Key type mein "JSON" choose karein aur "CREATE" dabayein.
+5. Ek JSON file download ho jayegi.
+6. Is downloaded file ka naam rename karke `credentials.json` rakh dein.
+7. Is `credentials.json` file ko apne project ke root folder mein paste kar dein:
+   c:\Users\NIKHIL RAWAT\OneDrive\Desktop\Nikhil PROJECT\Resume project\FIND ME\credentials.json
+
+--------------------------------------------------------------------------------
+STEP 5: GOOGLE DRIVE MEIN FOLDER SHARE KARNA (IMPORTANT)
+--------------------------------------------------------------------------------
+Kyunki Service Account ek secure bot account hota hai, aapko apne Google Drive 
+ke photos folder ka access usko dena hoga:
+
+1. Apne regular Google Drive (drive.google.com) par jayein.
+2. Jis folder mein photos hain, us folder par Right Click karein -> "Share" (Share).
+3. "Add people and groups" mein Step 3 wala Service Account email paste karein:
+   (e.g., findme-drive-bot@project-123.iam.gserviceaccount.com)
+4. Permission mein "Editor" select karein (Editor permission zaroori hai taaki FIND ME 
+   Google Drive par duplicate files ko delete aur 1-Click rename kar sake).
+5. Folder ka link ya Folder ID copy kar lijiye:
+   Folder Link format: https://drive.google.com/drive/folders/1ABC_XYZ123456789
+   (Folder ID wahi '1ABC_XYZ123456789' hoti hai)
+
+--------------------------------------------------------------------------------
+STEP 6: APP MEIN USE KAISE KAREIN (NEW SUPER FEATURES)
+--------------------------------------------------------------------------------
+1. Project run karein:
+   python run.py
+2. Browser mein open karein:
+   http://127.0.0.1:8000
+3. Top navigation header mein "Google Drive Sync" button dabayein:
+   
+   A) [NO DISK DOWNLOAD - DIRECT IN-MEMORY EMBEDDING]:
+      Photos local hard drive par download nahi hongi! System Google Drive se 
+      image ko direct RAM mein stream karta hai, InsightFace embeddings nikalta 
+      hai aur FAISS database mein indexing save karta hai. Original photos 
+      Drive par hi securely rehti hain.
+
+   B) [AUTO-CLEAN SAME NAME / DUPLICATE FILES]:
+      Agar aapke Drive folder mein same name ya same content wali multiple files 
+      upload ho gayi hain, toh system automatically unhe detect karke duplicate 
+      copies ko Drive se delete kar deta hai aur clean version rakhta hai.
+
+   C) [1-CLICK BATCH RENAME ON DRIVE]:
+      Agar Google Drive folder me naming kharab hai (jaise WhatsApp Images, 
+      IMG_001 etc.), toh modal ke andar "1-Click Rename Drive" button dabayein. 
+      Wo Google Drive par jaakar saari photos ko cleanly sequence mein 
+      `photo_0001.jpg`, `photo_0002.jpg`... rename kar dega!
+
+================================================================================

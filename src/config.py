@@ -19,6 +19,14 @@ DETECTION_SIZE = (640, 640)
 DETECTION_THRESHOLD = 0.55
 SIMILARITY_THRESHOLD = 0.48  # Cosine similarity cutoff for query matching
 
+# Google Drive Configuration
+GDRIVE_DIR = DATA_DIR / "gdrive_downloads"
+GDRIVE_CREDENTIALS_PATH = BASE_DIR / "credentials.json"
+GDRIVE_TOKEN_PATH = BASE_DIR / "token.json"
+DEFAULT_GDRIVE_FOLDER_ID = os.getenv("GDRIVE_FOLDER_ID", "")
+
 # Ensure necessary directories exist
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 PROCESSED_PHOTOS_DIR.mkdir(parents=True, exist_ok=True)
+GDRIVE_DIR.mkdir(parents=True, exist_ok=True)
+

@@ -41,3 +41,10 @@ desktop.ini
 
 # Logs
 *.log
+
+# Google Drive Credentials & Secrets
+credentials.json
+findme-app-*.json
+token.json
+service_account.json
+

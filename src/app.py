@@ -6,10 +6,10 @@ from typing import List, Optional
 from fastapi import FastAPI, File, UploadFile, Query, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 from src.config import BASE_DIR, PROCESSED_PHOTOS_DIR, SIMILARITY_THRESHOLD
-from src.database import get_stats, get_all_photos
+from src.database import get_stats, get_all_photos, get_photo_by_filename
 from src.indexer import StockIndexer
 from src.searcher import FaceSearcher
 
@@ -45,24 +45,87 @@ def api_stats():
     return stats
 
 @app.get("/api/photos")
-def api_photos(limit: int = 100, offset: int = 0):
-    return get_all_photos(limit=limit, offset=offset)
+def api_photos(limit: int = 100, offset: int = 0, source: Optional[str] = None):
+    return get_all_photos(limit=limit, offset=offset, source_type=source)
 
 @app.get("/api/photos/{filename}")
 def api_get_photo(filename: str):
     file_path = PROCESSED_PHOTOS_DIR / filename
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Photo not found")
-    return FileResponse(file_path)
+    if file_path.exists():
+        return FileResponse(file_path)
+
+    # If photo originated from Google Drive (not saved on disk)
+    photo_record = get_photo_by_filename(filename)
+    if photo_record and photo_record.get("gdrive_file_id"):
+        try:
+            raw_bytes = indexer.gdrive_service.get_photo_bytes(photo_record["gdrive_file_id"])
+            return Response(content=raw_bytes, media_type="image/jpeg")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to stream from Drive: {e}")
+
+    raise HTTPException(status_code=404, detail="Photo not found")
+
 
 @app.post("/api/index")
 def trigger_indexing():
     """
-    Triggers the numbering & embedding conversion pipeline on stock photos.
+    Triggers the numbering & embedding conversion pipeline on local stock photos.
     """
     result = indexer.index_stock_photos()
     searcher.reload_index()
     return {"status": "success", "data": result}
+
+@app.get("/api/gdrive/status")
+def api_gdrive_status():
+    """
+    Checks Google Drive API credentials and connectivity.
+    """
+    return indexer.gdrive_service.check_connection()
+
+@app.post("/api/gdrive/sync")
+def api_gdrive_sync(
+    folder_id: str = Query(..., description="Google Drive Folder URL or Folder ID"),
+    clean_duplicates: bool = Query(default=True, description="Automatically detect and delete duplicate files in Drive")
+):
+    """
+    Scans Google Drive folder, removes duplicates, and indexes face embeddings directly in-memory.
+    """
+    try:
+        result = indexer.index_gdrive_photos(folder_id=folder_id, clean_duplicates_first=clean_duplicates)
+        searcher.reload_index()
+        return {"status": "success", "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/gdrive/rename")
+def api_gdrive_rename(
+    folder_id: str = Query(..., description="Google Drive Folder URL or Folder ID"),
+    prefix: str = Query(default="photo", description="Prefix for filenames (e.g. photo -> photo_0001.jpg)")
+):
+    """
+    One-click renames all images in the Google Drive folder sequentially.
+    """
+    try:
+        result = indexer.gdrive_service.batch_rename_folder(folder_id=folder_id, prefix=prefix)
+        return {"status": "success", "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/gdrive/clean-duplicates")
+def api_gdrive_clean_duplicates(
+    folder_id: str = Query(..., description="Google Drive Folder URL or Folder ID"),
+    delete: bool = Query(default=False, description="Whether to actually delete duplicates or just preview")
+):
+    """
+    Finds and optionally deletes duplicate files in a Google Drive folder.
+    """
+    try:
+        result = indexer.gdrive_service.find_and_clean_duplicates(folder_id=folder_id, auto_delete=delete)
+        return {"status": "success", "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 
 @app.post("/api/search")
 async def api_search(
