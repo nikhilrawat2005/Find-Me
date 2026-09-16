@@ -223,8 +223,8 @@
             <button onclick="filterBySource('gdrive')" id="filterGDrive" class="px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition">Google Drive</button>
           </div>
 
-          <!-- Tier Summary Badges -->
-          <div id="tierSummary" class="hidden flex flex-wrap gap-2">
+          <!-- Tier Summary Badges & Action Buttons -->
+          <div id="tierSummary" class="hidden flex flex-wrap items-center gap-2">
             <span id="badgeStrong" class="hidden items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-900/60 border border-emerald-700/50 text-emerald-300">
               <span class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span><span id="countStrong">0</span> Strong
             </span>
@@ -234,9 +234,18 @@
             <span id="badgePossible" class="hidden items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-orange-900/60 border border-orange-700/50 text-orange-300">
               <span class="w-2 h-2 rounded-full bg-orange-400 inline-block"></span><span id="countPossible">0</span> Possible
             </span>
+            <!-- Download All Matches ZIP -->
+            <button id="btnDownloadZip" onclick="downloadAllMatchesZip()" title="Download all matched photos as ZIP" class="px-3 py-1 rounded-full text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1.5 shadow-sm transition active:scale-95">
+              <i class="fa-solid fa-file-zipper"></i> Download All
+            </button>
+            <!-- Export JSON metadata -->
+            <button id="btnExportJson" onclick="exportMatchesJson()" title="Download structured JSON results" class="px-3 py-1 rounded-full text-xs font-semibold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 flex items-center gap-1.5 transition active:scale-95">
+              <i class="fa-solid fa-code"></i> JSON
+            </button>
           </div>
         </div>
       </div>
+
 
       <!-- Loader -->
       <div id="loader" class="hidden py-24 flex flex-col items-center justify-center space-y-4">
@@ -995,6 +1004,7 @@
           ? `Found ${total} matching photo${total !== 1 ? 's' : ''} across all confidence levels.`
           : 'No matches found. Try a different or clearer reference photo.';
 
+        currentSearchResults = data.results || [];
         renderPhotoGrid(data.results, true);
       } catch (err) {
         loader.classList.add('hidden');
@@ -1002,6 +1012,85 @@
         alert('An error occurred while searching: ' + err.message);
       }
     });
+
+    let currentSearchResults = [];
+
+    // ── Download All Matches as ZIP ─────────────────────────────────────────
+    async function downloadAllMatchesZip() {
+      if (!currentSearchResults || currentSearchResults.length === 0) {
+        alert('No search results to download.');
+        return;
+      }
+
+      const btn = document.getElementById('btnDownloadZip');
+      const origText = btn.innerHTML;
+      btn.innerHTML = '<i class="fa-solid fa-spinner animate-spin"></i> Bundling ZIP...';
+      btn.disabled = true;
+
+      try {
+        const photoIds = currentSearchResults.map(r => r.photo_id);
+        const res = await fetch('/api/download-zip', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ photo_ids: photoIds })
+        });
+
+        if (!res.ok) {
+          throw new Error('Failed to generate ZIP');
+        }
+
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `find_me_matches_${new Date().toISOString().slice(0, 10)}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+      } catch (err) {
+        alert('Error downloading ZIP: ' + err.message);
+      } finally {
+        btn.innerHTML = origText;
+        btn.disabled = false;
+      }
+    }
+
+    // ── Export Matches as Structured JSON ──────────────────────────────────
+    function exportMatchesJson() {
+      if (!currentSearchResults || currentSearchResults.length === 0) {
+        alert('No search results to export.');
+        return;
+      }
+
+      const exportData = {
+        generated_at: new Date().toISOString(),
+        total_matches: currentSearchResults.length,
+        results: currentSearchResults.map(item => ({
+          photo_number: item.photo_number,
+          numbered_filename: item.numbered_filename,
+          original_filename: item.original_filename,
+          source: item.source_type || (item.gdrive_file_id ? 'gdrive' : 'local'),
+          similarity_score: item.similarity_score,
+          percentage: `${item.percentage}%`,
+          tier: item.tier,
+          tier_label: item.tier_label,
+          photo_link: item.source_type === 'gdrive' ? item.stored_path : `/api/photos/${item.numbered_filename}`,
+          matched_faces: item.matched_faces
+        }))
+      };
+
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `matched_photos_report_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    }
+
 
     // ── Local Indexing ─────────────────────────────────────────────────────
     btnIndex.addEventListener('click', async () => {

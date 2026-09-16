@@ -185,15 +185,43 @@ class GDriveService:
         body = {'name': new_name}
         return self.service.files().update(fileId=file_id, body=body, fields='id, name').execute()
 
-    def delete_file(self, file_id: str) -> bool:
+    def delete_file(self, file_id: str, folder_id: Optional[str] = None) -> bool:
         """
-        Permanently deletes a file from Google Drive (or trashes it).
+        Safely removes a duplicate file from Google Drive:
+        1. Tries moving file to Trash (trashed=True).
+        2. If non-owner restriction prevents trashing, removes the file from this specific folder (removeParents).
+        3. Falls back to delete if owner.
         """
         if not self.authenticate():
             raise RuntimeError("Google Drive is not authenticated.")
 
-        self.service.files().delete(fileId=file_id).execute()
-        return True
+        # Approach 1: Move to Trash (recommended & safer than hard delete)
+        try:
+            self.service.files().update(fileId=file_id, body={'trashed': True}).execute()
+            return True
+        except Exception:
+            pass
+
+        # Approach 2: If user is not owner, remove file from this folder (unlink)
+        if folder_id:
+            try:
+                cleaned_folder = self.extract_folder_id(folder_id)
+                self.service.files().update(
+                    fileId=file_id,
+                    removeParents=cleaned_folder,
+                    fields='id, parents'
+                ).execute()
+                return True
+            except Exception:
+                pass
+
+        # Approach 3: Hard delete
+        try:
+            self.service.files().delete(fileId=file_id).execute()
+            return True
+        except Exception as e:
+            raise e
+
 
     def find_and_clean_duplicates(self, folder_id: str, auto_delete: bool = False) -> Dict[str, Any]:
         """
@@ -235,10 +263,10 @@ class GDriveService:
                         })
                         if auto_delete:
                             try:
-                                self.delete_file(d["id"])
+                                self.delete_file(d["id"], folder_id=folder_id)
                                 deleted_count += 1
                             except Exception as del_err:
-                                print(f"[GDrive Error] Failed to delete duplicate {d['id']}: {del_err}")
+                                print(f"[GDrive Error] Failed to delete/unlink duplicate {d['id']}: {del_err}")
 
         return {
             "total_files_scanned": len(files),

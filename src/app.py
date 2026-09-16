@@ -164,3 +164,46 @@ async def api_search(
         "thresholds":         search_output.get("thresholds", {}),
         "results":            search_output["results"],
     }
+
+@app.post("/api/download-zip")
+async def api_download_zip(data: dict):
+    """
+    Bundles the matched photos into a single ZIP file for download.
+    Supports both local processed photos and Google Drive photos (streamed directly into ZIP).
+    """
+    photo_ids = data.get("photo_ids", [])
+    if not photo_ids:
+        raise HTTPException(status_code=400, detail="No photos selected for download")
+
+    from src.database import get_connection
+    conn = get_connection()
+    cursor = conn.cursor()
+    placeholders = ",".join("?" for _ in photo_ids)
+    cursor.execute(f"SELECT * FROM photos WHERE id IN ({placeholders})", photo_ids)
+    photos = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+
+    import zipfile
+    zip_buffer = io.BytesIO()
+
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for p in photos:
+            filename = p.get("numbered_filename") or f"photo_{p['id']}.jpg"
+            if p.get("source_type") == "gdrive" and p.get("gdrive_file_id"):
+                try:
+                    file_bytes = indexer.gdrive_service.get_photo_bytes(p["gdrive_file_id"])
+                    zip_file.writestr(filename, file_bytes)
+                except Exception as e:
+                    print(f"Failed to add Drive photo {filename} to zip: {e}")
+            else:
+                local_path = PROCESSED_PHOTOS_DIR / filename
+                if local_path.exists():
+                    zip_file.write(local_path, arcname=filename)
+
+    zip_buffer.seek(0)
+    return Response(
+        content=zip_buffer.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=matched_photos.zip"}
+    )
+
