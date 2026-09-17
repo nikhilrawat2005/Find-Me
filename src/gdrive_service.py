@@ -299,12 +299,195 @@ class GDriveService:
             raise e
 
 
+    def is_image_file(self, file_meta: Dict[str, Any]) -> bool:
+        """
+        Determines if a Google Drive file is an image based on MIME type or filename extension.
+        Bypasses video MIME types and extensions.
+        """
+        mime = file_meta.get("mimeType", "").lower()
+        name = file_meta.get("name", "").lower()
+
+        # Instant skip for video types
+        if mime.startswith("video/") or any(name.endswith(ext) for ext in [".mp4", ".mov", ".avi", ".mkv", ".wmv", ".flv", ".webm", ".m4v"]):
+            return False
+
+        if mime in SUPPORTED_MIME_TYPES:
+            return True
+
+        # Fallback to extension check in case of custom mime types (e.g. iPhone HEIC or generic binary)
+        valid_exts = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}
+        ext = Path(name).suffix.lower()
+        return ext in valid_exts
+
+    def crawl_folder_recursive(self, root_folder_id: str, current_path: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """
+        Recursively walks Google Drive folder tree starting from root_folder_id.
+        - Descends into every subfolder (e.g. Camera, iPhone, Day 1, Presentation, videos).
+        - Skips video files instantly.
+        - Identifies and retains any image files (even inside video folders).
+        - Automatically computes `section_name` and `subfolder_path` for each photo.
+        """
+        if not self.authenticate():
+            raise RuntimeError("Google Drive is not authenticated.")
+
+        if current_path is None:
+            current_path = []
+
+        cleaned_id = self.extract_folder_id(root_folder_id)
+        results = []
+        page_token = None
+
+        # Query all non-trashed children (both folders and files) in this directory
+        query = f"'{cleaned_id}' in parents and trashed = false"
+
+        while True:
+            response = self.service.files().list(
+                q=query,
+                spaces='drive',
+                fields='nextPageToken, files(id, name, mimeType, size, md5Checksum, createdTime, modifiedTime, thumbnailLink, webViewLink)',
+                pageToken=page_token,
+                pageSize=100
+            ).execute()
+
+            items = response.get('files', [])
+            for item in items:
+                mime = item.get('mimeType', '')
+                item_name = item.get('name', '').strip()
+
+                if mime == 'application/vnd.google-apps.folder':
+                    # Recurse into child directory
+                    sub_path = current_path + [item_name]
+                    sub_results = self.crawl_folder_recursive(item['id'], current_path=sub_path)
+                    results.extend(sub_results)
+                else:
+                    # Check if file is an image (fast-skipping videos)
+                    if self.is_image_file(item):
+                        # Determine human-friendly section name
+                        section_name = self._resolve_section_name(current_path)
+                        subfolder_str = "/".join(current_path) if current_path else ""
+
+                        item_copy = dict(item)
+                        item_copy["section_name"] = section_name
+                        item_copy["subfolder_path"] = subfolder_str
+                        item_copy["parent_folder_id"] = cleaned_id
+                        results.append(item_copy)
+
+            page_token = response.get('nextPageToken')
+            if not page_token:
+                break
+
+        return results
+
+    @staticmethod
+    def _resolve_section_name(path_parts: List[str]) -> str:
+        """
+        Resolves a clean section name from folder hierarchy.
+        E.g.:
+        ["Day 1", "Presentation", "photos"] -> "Presentation"
+        ["Camera 1", "photos"] -> "Camera 1"
+        ["iPhone 15"] -> "iPhone 15"
+        ["Day 2", "Inauguration"] -> "Inauguration"
+        [] -> "Photo"
+        """
+        if not path_parts:
+            return "Photo"
+
+        generic_names = {"photos", "images", "photo", "image", "raw", "pics", "pictures", "videos", "video", "dcim"}
+        # Search backwards for the most descriptive folder name
+        for part in reversed(path_parts):
+            clean = part.strip()
+            if clean.lower() not in generic_names and clean:
+                # Replace underscores/dashes with spaces and title case
+                return re.sub(r'[^\w\s-]', '', clean).replace(" ", "_")
+
+        # Fallback to the first non-empty folder name
+        return re.sub(r'[^\w\s-]', '', path_parts[0].strip()).replace(" ", "_")
+
+    def batch_rename_recursive(self, crawled_photos: List[Dict[str, Any]], fresh_reset: bool = False) -> Dict[str, Any]:
+        """
+        Renames photos sequentially section-by-section directly on Google Drive.
+        Format: <SectionName>_0001.jpg, <SectionName>_0002.jpg...
+        Preserves existing valid section names when fresh_reset=False.
+        """
+        # Group crawled photos by parent folder
+        folder_groups: Dict[str, List[Dict[str, Any]]] = {}
+        for photo in crawled_photos:
+            folder_id = photo.get("parent_folder_id")
+            folder_groups.setdefault(folder_id, []).append(photo)
+
+        total_renamed = 0
+        renamed_details = []
+
+        for folder_id, photos in folder_groups.items():
+            if not photos:
+                continue
+            section = photos[0].get("section_name", "Photo")
+            # Pattern matching: SectionName_0001.ext
+            pattern = re.compile(rf"^{re.escape(section)}_(\d{{4}})\.(jpg|jpeg|png|webp|heic|heif)$", re.IGNORECASE)
+
+            if fresh_reset:
+                photos_sorted = sorted(photos, key=lambda x: (x.get("createdTime", ""), x.get("name", "")))
+                for idx, f in enumerate(photos_sorted, start=1):
+                    curr_name = f["name"]
+                    ext = Path(curr_name).suffix.lower()
+                    if not ext or ext not in {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}:
+                        ext = ".jpg"
+
+                    new_name = f"{section}_{idx:04d}{ext}"
+                    if curr_name != new_name:
+                        try:
+                            self.rename_file(f["id"], new_name)
+                            f["name"] = new_name
+                            total_renamed += 1
+                            renamed_details.append({"file_id": f["id"], "old_name": curr_name, "new_name": new_name})
+                        except Exception as e:
+                            print(f"[GDrive Error] Failed to rename {curr_name} to {new_name}: {e}")
+            else:
+                existing_numbers = set()
+                unnamed_files = []
+
+                for f in photos:
+                    m = pattern.match(f["name"])
+                    if m:
+                        existing_numbers.add(int(m.group(1)))
+                    else:
+                        unnamed_files.append(f)
+
+                next_idx = (max(existing_numbers) + 1) if existing_numbers else 1
+                unnamed_sorted = sorted(unnamed_files, key=lambda x: (x.get("createdTime", ""), x.get("name", "")))
+
+                for f in unnamed_sorted:
+                    while next_idx in existing_numbers:
+                        next_idx += 1
+
+                    curr_name = f["name"]
+                    ext = Path(curr_name).suffix.lower()
+                    if not ext or ext not in {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}:
+                        ext = ".jpg"
+
+                    new_name = f"{section}_{next_idx:04d}{ext}"
+                    try:
+                        self.rename_file(f["id"], new_name)
+                        f["name"] = new_name
+                        existing_numbers.add(next_idx)
+                        total_renamed += 1
+                        renamed_details.append({"file_id": f["id"], "old_name": curr_name, "new_name": new_name})
+                        next_idx += 1
+                    except Exception as e:
+                        print(f"[GDrive Error] Failed to rename {curr_name} to {new_name}: {e}")
+
+        return {
+            "total_files": len(crawled_photos),
+            "renamed_count": total_renamed,
+            "details": renamed_details
+        }
+
     def find_and_clean_duplicates(self, folder_id: str, auto_delete: bool = False) -> Dict[str, Any]:
         """
-        Scans a folder for duplicate files (same name OR same md5 checksum).
+        Scans all files across root and subfolders for duplicates (same name OR same md5 checksum).
         If auto_delete is True, keeps the earliest/primary uploaded copy and deletes duplicates.
         """
-        files = self.list_folder_photos(folder_id)
+        files = self.crawl_folder_recursive(folder_id)
         name_groups: Dict[str, List[Dict[str, Any]]] = {}
         hash_groups: Dict[str, List[Dict[str, Any]]] = {}
 
@@ -319,10 +502,8 @@ class GDriveService:
         deleted_count = 0
         seen_dup_ids = set()
 
-        # Group duplicates by name or content hash
         for name, group in name_groups.items():
             if len(group) > 1:
-                # Sort by createdTime / modifiedTime so original is kept first
                 group_sorted = sorted(group, key=lambda x: x.get("createdTime", x.get("modifiedTime", "")))
                 keep = group_sorted[0]
                 dupes = group_sorted[1:]
@@ -339,10 +520,10 @@ class GDriveService:
                         })
                         if auto_delete:
                             try:
-                                self.delete_file(d["id"], folder_id=folder_id)
+                                self.delete_file(d["id"], folder_id=d.get("parent_folder_id", folder_id))
                                 deleted_count += 1
                             except Exception as del_err:
-                                print(f"[GDrive Error] Failed to delete/unlink duplicate {d['id']}: {del_err}")
+                                print(f"[GDrive Error] Failed to delete duplicate {d['id']}: {del_err}")
 
         return {
             "total_files_scanned": len(files),
@@ -353,80 +534,8 @@ class GDriveService:
 
     def batch_rename_folder(self, folder_id: str, prefix: str = "photo", fresh_reset: bool = False) -> Dict[str, Any]:
         """
-        Intelligent Sequential Renamer:
-        - If fresh_reset is True: renames ALL photos sequentially from 0001 (e.g. photo_0001.jpg, photo_0002.jpg...).
-        - If fresh_reset is False (Incremental): keeps existing properly named files (photo_0001 ... photo_0040)
-          and only renames newly added files starting sequentially from max_existing + 1 (e.g. photo_0041 ... photo_0070).
+        Sequential renamer supporting both single folder and deep recursive folder structures.
         """
-        files = self.list_folder_photos(folder_id)
-        pattern = re.compile(rf"^{re.escape(prefix)}_(\d{{4}})\.(jpg|jpeg|png|webp)$", re.IGNORECASE)
-
-        renamed_count = 0
-        renamed_details = []
-
-        if fresh_reset:
-            # Sort files consistently by createdTime / name and rename from 0001
-            files_sorted = sorted(files, key=lambda x: (x.get("createdTime", ""), x.get("name", "")))
-            for idx, f in enumerate(files_sorted, start=1):
-                curr_name = f["name"]
-                ext = Path(curr_name).suffix.lower()
-                if not ext or ext not in {".jpg", ".jpeg", ".png", ".webp"}:
-                    ext = ".jpg"
-
-                new_name = f"{prefix}_{idx:04d}{ext}"
-                if curr_name != new_name:
-                    try:
-                        self.rename_file(f["id"], new_name)
-                        renamed_count += 1
-                        renamed_details.append({
-                            "file_id": f["id"],
-                            "old_name": curr_name,
-                            "new_name": new_name
-                        })
-                    except Exception as e:
-                        print(f"[GDrive Error] Failed to rename {curr_name} to {new_name}: {e}")
-        else:
-            # Incremental Continuation
-            existing_numbers = set()
-            unnamed_files = []
-
-            for f in files:
-                m = pattern.match(f["name"])
-                if m:
-                    existing_numbers.add(int(m.group(1)))
-                else:
-                    unnamed_files.append(f)
-
-            next_idx = (max(existing_numbers) + 1) if existing_numbers else 1
-            unnamed_sorted = sorted(unnamed_files, key=lambda x: (x.get("createdTime", ""), x.get("name", "")))
-
-            for f in unnamed_sorted:
-                # Find next free number
-                while next_idx in existing_numbers:
-                    next_idx += 1
-
-                curr_name = f["name"]
-                ext = Path(curr_name).suffix.lower()
-                if not ext or ext not in {".jpg", ".jpeg", ".png", ".webp"}:
-                    ext = ".jpg"
-
-                new_name = f"{prefix}_{next_idx:04d}{ext}"
-                try:
-                    self.rename_file(f["id"], new_name)
-                    existing_numbers.add(next_idx)
-                    renamed_count += 1
-                    renamed_details.append({
-                        "file_id": f["id"],
-                        "old_name": curr_name,
-                        "new_name": new_name
-                    })
-                    next_idx += 1
-                except Exception as e:
-                    print(f"[GDrive Error] Failed to rename {curr_name} to {new_name}: {e}")
-
-        return {
-            "total_files": len(files),
-            "renamed_count": renamed_count,
-            "details": renamed_details
-        }
+        crawled = self.crawl_folder_recursive(folder_id)
+        return self.batch_rename_recursive(crawled, fresh_reset=fresh_reset)
 

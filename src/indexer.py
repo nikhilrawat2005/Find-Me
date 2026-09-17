@@ -254,25 +254,25 @@ class StockIndexer:
                 reset_event_photos(event_id)
                 self.rebuild_index_from_db()
 
-            # 2. Duplicate Detection & Auto-Trash
+            # 2. Recursive Crawl, Duplicate Detection & Auto-Trash
             GLOBAL_SYNC_PROGRESS.update({
                 "phase": "duplicates",
-                "message": "Checking and removing duplicate files in Google Drive..."
+                "message": "Scanning all subfolders & removing duplicates in Google Drive..."
             })
             dup_report = self.gdrive_service.find_and_clean_duplicates(cleaned_folder_id, auto_delete=True)
-            print(f"Duplicate cleanup: {dup_report['duplicates_found']} found, {dup_report['duplicates_deleted']} cleaned.")
+            print(f"Duplicate cleanup across folders: {dup_report['duplicates_found']} found, {dup_report['duplicates_deleted']} cleaned.")
 
-            # 3. Automatic Drive Folder Sequential Renaming
+            # 3. Section-Aware Recursive Drive Renaming (<SectionName>_0001.jpg)
             GLOBAL_SYNC_PROGRESS.update({
                 "phase": "renaming",
-                "message": "Organizing photo sequence on Google Drive..."
+                "message": "Organizing photo sequence section-by-section on Google Drive..."
             })
-            rename_report = self.gdrive_service.batch_rename_folder(cleaned_folder_id, prefix="photo", fresh_reset=fresh_reset)
-            print(f"Drive Renaming: {rename_report['renamed_count']} files organized to photo_XXXX format.")
+            rename_report = self.gdrive_service.batch_rename_folder(cleaned_folder_id, fresh_reset=fresh_reset)
+            print(f"Drive Renaming: {rename_report['renamed_count']} files organized section-by-section.")
 
-            # 4. Fetch Cleaned & Renamed File List
-            folder_files = self.gdrive_service.list_folder_photos(cleaned_folder_id)
-            print(f"Found {len(folder_files)} photo(s) in Drive event folder ready for in-memory indexing.")
+            # 4. Fetch Cleaned, Renamed & Section-Tagged File List
+            folder_files = self.gdrive_service.crawl_folder_recursive(cleaned_folder_id)
+            print(f"Found {len(folder_files)} photo(s) across all Drive subfolders ready for in-memory indexing.")
 
             # Filter unindexed files
             to_process = []
@@ -296,7 +296,7 @@ class StockIndexer:
                     "current": 0,
                     "total": 0,
                     "percentage": 100,
-                    "message": f"Event '{event_name}' is fully up to date ({skipped_count} photos already indexed)."
+                    "message": f"Event '{event_name}' is fully up to date ({skipped_count} photos already indexed across all sections)."
                 })
                 return {
                     "source": "gdrive",
@@ -357,6 +357,8 @@ class StockIndexer:
                 file_meta, raw_bytes, err = item
                 gdrive_id = file_meta["id"]
                 current_drive_name = file_meta.get("name", f"{gdrive_id}.jpg")
+                section_name = file_meta.get("section_name", "Photo")
+                subfolder_path = file_meta.get("subfolder_path", "")
 
                 if err or raw_bytes is None:
                     print(f"\n[Warning] Could not stream {current_drive_name}: {err}")
@@ -398,12 +400,14 @@ class StockIndexer:
                     photo_number=next_num,
                     numbered_filename=numbered_filename,
                     original_filename=current_drive_name,
-                    original_path=f"gdrive://{cleaned_folder_id}/{current_drive_name}",
+                    original_path=f"gdrive://{cleaned_folder_id}/{subfolder_path + '/' if subfolder_path else ''}{current_drive_name}",
                     stored_path=gdrive_link,
                     face_count=len(faces),
                     source_type="gdrive",
                     gdrive_file_id=gdrive_id,
-                    event_id=event_id
+                    event_id=event_id,
+                    section_name=section_name,
+                    subfolder_path=subfolder_path
                 )
 
                 for face in faces:

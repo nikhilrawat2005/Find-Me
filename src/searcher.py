@@ -133,6 +133,8 @@ class FaceSearcher:
                     "gdrive_file_id":    face_info.get("gdrive_file_id"),
                     "event_id":          face_info.get("event_id"),
                     "event_name":        face_info.get("event_name", "Local Stock"),
+                    "section_name":      face_info.get("section_name"),
+                    "subfolder_path":    face_info.get("subfolder_path"),
                     "similarity_score":  round(similarity, 4),
                     "percentage":        round(similarity * 100, 1),
                     "tier":              tier_info["tier"],

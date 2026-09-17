@@ -3,106 +3,179 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FIND ME - Face Recognition Photo Search</title>
+  <title>FIND ME - AI Face Recognition & Media Search</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
-    body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #030712; }
+    :root {
+      --bg-pitch: #03060d;
+      --bg-surface: #070e1c;
+      --neon-blue: #2563eb;
+      --neon-glow: #00e5ff;
+      --border-blue: rgba(0, 149, 255, 0.22);
+    }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg-pitch);
+      background-image: 
+        radial-gradient(ellipse 80% 50% at 50% -20%, rgba(0, 102, 255, 0.12), transparent 70%),
+        linear-gradient(to bottom, #03060d 0%, #050a14 100%);
+    }
+    .font-mono { font-family: 'JetBrains+Mono', monospace; }
     #cameraVideo { transform: scaleX(-1); } /* Mirror for selfie feel */
-    .tab-active   { background: #2563eb; color: #fff; box-shadow: 0 0 15px rgba(37,99,235,0.4); }
-    .tab-inactive { background: transparent; color: #64748b; }
-    .tab-inactive:hover { color: #cbd5e1; background: rgba(255,255,255,0.03); }
-    .electric-border { border-color: rgba(56, 189, 248, 0.2); }
-    .electric-glow { box-shadow: 0 0 20px rgba(14, 165, 233, 0.15); }
+    
+    /* Glowing electric cyan & blue borders */
+    .glow-border {
+      border: 1px solid rgba(0, 195, 255, 0.35);
+      box-shadow: 0 0 15px rgba(0, 170, 255, 0.15), inset 0 0 15px rgba(0, 170, 255, 0.05);
+    }
+    .glow-card {
+      background: linear-gradient(180deg, rgba(8, 17, 34, 0.85) 0%, rgba(4, 9, 20, 0.95) 100%);
+      border: 1px solid rgba(0, 136, 255, 0.25);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .glow-card:hover {
+      border-color: rgba(0, 217, 255, 0.6);
+      box-shadow: 0 0 25px rgba(0, 160, 255, 0.2), inset 0 0 10px rgba(0, 200, 255, 0.08);
+      transform: translateY(-2px);
+    }
+    .glow-card-active {
+      background: linear-gradient(180deg, rgba(10, 25, 50, 0.95) 0%, rgba(4, 12, 26, 0.98) 100%);
+      border: 1px solid #00c3ff !important;
+      box-shadow: 0 0 30px rgba(0, 195, 255, 0.35), inset 0 0 20px rgba(0, 195, 255, 0.1) !important;
+    }
+    .neon-line {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(0, 195, 255, 0.7), transparent);
+    }
+    .tab-active {
+      background: #0066ff;
+      color: #ffffff;
+      box-shadow: 0 0 20px rgba(0, 102, 255, 0.6);
+    }
+    .tab-inactive {
+      background: transparent;
+      color: #94a3b8;
+    }
+    .tab-inactive:hover {
+      color: #f1f5f9;
+      background: rgba(255, 255, 255, 0.04);
+    }
+    /* Sleek custom scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #03060d; }
+    ::-webkit-scrollbar-thumb { background: #0c2044; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #0077ff; }
   </style>
 </head>
-<body class="bg-[#030712] text-slate-100 min-h-screen antialiased flex flex-col selection:bg-blue-600 selection:text-white">
+<body class="text-slate-100 min-h-screen antialiased flex flex-col selection:bg-blue-600 selection:text-white">
 
   <!-- Header -->
-  <header class="border-b border-blue-950/60 bg-[#070d1d]/80 backdrop-blur sticky top-0 z-50 px-6 py-4 flex items-center justify-between">
-    <div class="flex items-center space-x-3">
-      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-blue-500 to-cyan-400 flex items-center justify-center text-xl font-bold shadow-lg shadow-blue-500/30 text-white">
+  <header class="border-b border-blue-950/80 bg-[#040813]/90 backdrop-blur-md sticky top-0 z-50 px-6 py-3.5 flex items-center justify-between">
+    <div class="flex items-center space-x-3.5">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-700 via-blue-600 to-cyan-400 flex items-center justify-center text-xl font-bold shadow-[0_0_20px_rgba(0,140,255,0.45)] text-white">
         <i class="fa-solid fa-face-smile"></i>
       </div>
       <div>
-        <h1 class="text-xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-100 to-blue-400 bg-clip-text text-transparent">FIND ME</h1>
-        <p class="text-xs text-blue-300/70 font-medium">Face Recognition &amp; Vector Search System</p>
+        <div class="flex items-center space-x-2">
+          <h1 class="text-lg font-black tracking-tight text-white flex items-center gap-1.5">
+            FIND<span class="text-cyan-400">ME</span>
+          </h1>
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-blue-950 border border-cyan-500/40 text-cyan-300">CORE v2.5</span>
+        </div>
+        <p class="text-[11px] text-slate-400 font-medium">Autonomous Face Recognition &amp; Vector Search</p>
       </div>
     </div>
+
+    <!-- Right Controls -->
     <div class="flex items-center space-x-3">
-      <!-- Active Event Selector & Management -->
-      <div class="flex items-center space-x-1.5 bg-[#0b1329] border border-blue-900/60 rounded-xl p-1 text-xs shadow-inner">
-        <div class="flex items-center px-2 py-0.5">
-          <i id="eventSelectorIcon" class="fa-solid fa-layer-group text-blue-400 mr-2 text-xs"></i>
-          <span class="text-slate-400 mr-1.5 hidden sm:inline font-medium">Event:</span>
-          <select id="eventSelector" onchange="onEventChanged()" class="bg-transparent text-slate-100 font-semibold focus:outline-none cursor-pointer text-xs pr-1 max-w-[150px] sm:max-w-[220px] truncate">
-            <option value="" class="bg-[#0b1329] text-slate-200">🌐 All Events (Total)</option>
-          </select>
-        </div>
-
-        <!-- Event Re-Sync Button (Incremental) -->
-        <button id="btnResyncEvent" onclick="resyncCurrentEvent(false)" title="Re-sync event (Preserves existing numbers, appends only new photos from Drive)" class="hidden p-1.5 hover:bg-blue-900/50 text-cyan-400 hover:text-cyan-300 rounded-lg transition" >
-          <i class="fa-solid fa-rotate"></i>
-        </button>
-
-        <!-- Event Fresh Reset Button (Clean Re-Index from 0001) -->
-        <button id="btnFreshResetEvent" onclick="resyncCurrentEvent(true)" title="Clean & Fresh Re-Index (Wipes old indexed records for this event and indexes all photos starting fresh from photo_0001)" class="hidden p-1.5 hover:bg-amber-950/60 text-amber-400 hover:text-amber-300 rounded-lg transition" >
-          <i class="fa-solid fa-arrows-rotate"></i>
-        </button>
-
-        <!-- Event Delete Button -->
-        <button id="btnDeleteEvent" onclick="deleteCurrentEvent()" title="Delete selected event and its indexed data" class="hidden p-1.5 hover:bg-red-950/60 text-red-400 hover:text-red-300 rounded-lg transition" >
-          <i class="fa-solid fa-trash-can"></i>
-        </button>
-      </div>
-
-      <div id="statsBadge" class="hidden md:flex items-center space-x-3 bg-[#0b1329] border border-blue-900/50 px-3.5 py-1.5 rounded-full text-xs text-slate-200 shadow-sm">
-        <span><i class="fa-solid fa-images text-blue-400 mr-1.5"></i><strong id="statPhotos" class="text-white font-bold">0</strong> Photos</span>
-        <span class="text-blue-900/80">|</span>
-        <span><i class="fa-solid fa-id-badge text-cyan-400 mr-1.5"></i><strong id="statFaces" class="text-white font-bold">0</strong> Faces</span>
+      <div id="statsBadge" class="hidden md:flex items-center space-x-3.5 bg-[#060c1c] border border-blue-900/60 px-4 py-1.5 rounded-xl text-xs text-slate-300 shadow-inner">
+        <span><i class="fa-solid fa-images text-blue-400 mr-1.5"></i><strong id="statPhotos" class="text-white font-mono font-bold">0</strong> Photos</span>
+        <span class="text-blue-900">|</span>
+        <span><i class="fa-solid fa-fingerprint text-cyan-400 mr-1.5"></i><strong id="statFaces" class="text-white font-mono font-bold">0</strong> Faces</span>
       </div>
 
       <!-- Local Stock Scan Button -->
-      <button id="btnIndex" title="Scan local/ folder and subfolders" class="px-3.5 py-1.5 bg-[#0b1329] hover:bg-blue-950/60 border border-blue-800/60 hover:border-blue-500/60 transition rounded-xl text-xs font-semibold flex items-center space-x-2 shadow-sm active:scale-95 text-blue-200">
-        <i class="fa-solid fa-folder-tree text-blue-400"></i>
+      <button id="btnIndex" title="Scan local/ folder and subfolders" class="px-3.5 py-1.5 bg-[#071126] hover:bg-blue-950 border border-blue-800/60 hover:border-cyan-500/60 transition rounded-xl text-xs font-semibold flex items-center space-x-2 text-slate-200 active:scale-95">
+        <i class="fa-solid fa-folder-tree text-cyan-400"></i>
         <span class="hidden sm:inline">Scan Local</span>
       </button>
 
       <!-- Sync / Add Event Button -->
-      <button id="btnOpenGDriveModal" title="Sync or Add Event from Google Drive" class="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 via-sky-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 transition rounded-xl text-xs font-semibold flex items-center space-x-2 shadow-md shadow-cyan-500/20 active:scale-95 text-white">
+      <button id="btnOpenGDriveModal" title="Sync or Add Event from Google Drive" class="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 transition rounded-xl text-xs font-bold flex items-center space-x-2 shadow-[0_0_20px_rgba(0,180,255,0.3)] active:scale-95 text-white">
         <i class="fa-brands fa-google-drive text-sm"></i>
         <span>Add / Sync Event</span>
       </button>
     </div>
   </header>
 
+  <!-- Visual Event Grid Selector (Landing Sections) -->
+  <section class="max-w-7xl w-full mx-auto px-6 pt-6 pb-2">
+    <div class="flex items-center justify-between mb-3">
+      <div class="flex items-center space-x-2">
+        <div class="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_#00e5ff] animate-pulse"></div>
+        <h2 class="text-xs font-mono font-bold uppercase tracking-widest text-slate-300">Active Events &amp; Collections</h2>
+      </div>
+      <div class="flex items-center space-x-2">
+        <!-- Re-Sync Incremental -->
+        <button id="btnResyncEvent" onclick="resyncCurrentEvent(false)" title="Re-sync event (Preserves existing numbers, appends only new photos from Drive)" class="hidden px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#071530] border border-blue-800/80 text-cyan-300 hover:border-cyan-400 hover:shadow-[0_0_12px_rgba(0,195,255,0.25)] transition">
+          <i class="fa-solid fa-rotate mr-1"></i> Incremental Sync
+        </button>
+        <!-- Fresh Reset -->
+        <button id="btnFreshResetEvent" onclick="resyncCurrentEvent(true)" title="Clean & Fresh Re-Index" class="hidden px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-amber-950/40 border border-amber-800/60 text-amber-300 hover:border-amber-400 transition">
+          <i class="fa-solid fa-arrows-rotate mr-1"></i> Fresh Reset
+        </button>
+        <!-- Delete Event -->
+        <button id="btnDeleteEvent" onclick="deleteCurrentEvent()" title="Delete selected event" class="hidden px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-red-950/40 border border-red-800/60 text-red-300 hover:border-red-400 transition">
+          <i class="fa-solid fa-trash-can mr-1"></i> Delete
+        </button>
+      </div>
+    </div>
+
+    <!-- Event Cards Scrollable Container -->
+    <div id="eventsGrid" class="flex gap-3 overflow-x-auto pb-3 pt-1 scrollbar-none">
+      <!-- Injected by loadEvents() as modern glowing cards -->
+      <div class="px-5 py-3.5 rounded-xl border border-blue-950/80 bg-[#060c1a]/60 text-slate-500 text-xs flex items-center gap-2">
+        <i class="fa-solid fa-spinner animate-spin text-cyan-400"></i>
+        <span>Loading events...</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Glowing Neon Divider -->
+  <div class="max-w-7xl w-full mx-auto px-6 mb-4">
+    <div class="neon-line"></div>
+  </div>
+
   <!-- Main -->
-  <main class="flex-1 max-w-7xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-8">
+  <main class="flex-1 max-w-7xl w-full mx-auto p-6 pt-0 grid grid-cols-1 lg:grid-cols-12 gap-8">
 
     <!-- ── Left Column ─────────────────────────────────────────────────── -->
     <section class="lg:col-span-4 space-y-5">
-      <div class="bg-[#0b1329]/80 border border-blue-950/80 rounded-2xl p-6 shadow-2xl space-y-4 backdrop-blur">
+      <div class="bg-[#050b18]/90 border border-cyan-500/20 rounded-2xl p-6 shadow-[0_0_30px_rgba(0,100,255,0.08)] space-y-4 backdrop-blur">
 
         <!-- Title -->
-        <h2 class="text-base font-bold text-white flex items-center">
-          <i class="fa-solid fa-user-check text-cyan-400 mr-2.5"></i> Add Reference Photos
-        </h2>
-        <p class="text-xs text-slate-400 leading-relaxed">
-          Upload or capture 1–4 photos of the person. The system searches all three confidence levels automatically.
-        </p>
+        <div>
+          <h2 class="text-base font-bold text-white flex items-center tracking-tight">
+            <i class="fa-solid fa-camera-retro text-cyan-400 mr-2.5"></i> Reference Photo
+          </h2>
+          <p class="text-xs text-slate-400 mt-1 leading-relaxed">
+            Upload selfie or capture live. Multi-tier scale search will scan all event subfolders seamlessly.
+          </p>
+        </div>
 
         <!-- ── Input Mode Tabs ─────────────────────────────────────────── -->
-        <div class="flex rounded-xl overflow-hidden border border-blue-900/60 bg-[#060c1c] text-xs font-semibold p-0.5">
+        <div class="flex rounded-xl overflow-hidden border border-blue-900/60 bg-[#030713] text-xs font-semibold p-1">
           <button id="tabUpload" onclick="switchTab('upload')"
-            class="tab-active flex-1 py-2 flex items-center justify-center gap-1.5 transition rounded-lg">
-            <i class="fa-solid fa-upload text-[11px]"></i> Upload Photo
+            class="tab-active flex-1 py-2 flex items-center justify-center gap-1.5 transition rounded-lg font-medium">
+            <i class="fa-solid fa-arrow-up-from-bracket text-[11px]"></i> Upload Photo
           </button>
           <button id="tabCamera" onclick="switchTab('camera')"
-            class="tab-inactive flex-1 py-2 flex items-center justify-center gap-1.5 transition rounded-lg">
-            <i class="fa-solid fa-camera text-[11px]"></i> Use Camera
+            class="tab-inactive flex-1 py-2 flex items-center justify-center gap-1.5 transition rounded-lg font-medium">
+            <i class="fa-solid fa-camera text-[11px]"></i> Live Camera
           </button>
         </div>
 
@@ -224,9 +297,9 @@
 
         <!-- Search Button -->
         <button id="btnSearch"
-          class="w-full py-3.5 bg-gradient-to-r from-blue-600 via-sky-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold rounded-xl shadow-lg shadow-blue-500/25 transition active:scale-[0.98] flex items-center justify-center space-x-2">
+          class="w-full py-3.5 bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold rounded-xl shadow-[0_0_25px_rgba(0,140,255,0.4)] border border-cyan-400/40 hover:border-cyan-300 transition active:scale-[0.98] flex items-center justify-center space-x-2 tracking-wide">
           <i class="fa-solid fa-magnifying-glass"></i>
-          <span>Search Person</span>
+          <span>Search Across Event Photos</span>
         </button>
       </div>
 
@@ -757,80 +830,88 @@
 
     // ── Event & Source Filtering State ─────────────────────────────────────
     let currentEventId = '';      // Active event ID filter ('', or integer ID)
+    let currentEventName = 'All Events (Global)';
     let currentSourceFilter = ''; // '' (all), 'local', 'gdrive'
     let currentAllPhotos = [];    // Cached photos when browsing gallery
+    let loadedEventsList = [];    // Cached events
 
-    // ── Load Events List into Header Dropdown ──────────────────────────────
+    // ── Load Events as Modern Glowing Cards (Landing Section) ──────────────
     async function loadEvents() {
       try {
         const res = await fetch('/api/events');
         if (!res.ok) return;
-        const events = await res.json();
-        const selector = document.getElementById('eventSelector');
-        if (!selector) return;
+        loadedEventsList = await res.json();
+        const grid = document.getElementById('eventsGrid');
+        if (!grid) return;
 
-        const prevVal = currentEventId;
-        selector.innerHTML = '<option value="" class="bg-[#0b1329] text-white">🌐 All Events (Total)</option>';
-        events.forEach(ev => {
-          const opt = document.createElement('option');
-          opt.value = ev.id;
-          opt.dataset.source = ev.source_type || 'gdrive';
-          if (ev.source_type === 'local') {
-            opt.className = 'bg-[#06152d] text-blue-300 font-semibold';
-            opt.textContent = `💻 [LOCAL] ${ev.name} (${ev.photo_count || 0} photos)`;
-          } else {
-            opt.className = 'bg-[#031c19] text-emerald-300 font-semibold';
-            opt.textContent = `☁️ [DRIVE] ${ev.name} (${ev.photo_count || 0} photos)`;
-          }
-          selector.appendChild(opt);
+        grid.innerHTML = '';
+
+        // "All Events (Global)" Master Card
+        const allPhotosCount = loadedEventsList.reduce((acc, e) => acc + (e.photo_count || 0), 0);
+        const allCard = document.createElement('div');
+        allCard.className = `cursor-pointer px-4 py-3 rounded-xl flex items-center gap-3 min-w-[200px] shrink-0 ${currentEventId === '' ? 'glow-card-active' : 'glow-card'}`;
+        allCard.onclick = () => selectEvent('');
+        allCard.innerHTML = `
+          <div class="w-9 h-9 rounded-lg bg-blue-600/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400 shrink-0">
+            <i class="fa-solid fa-globe"></i>
+          </div>
+          <div class="truncate">
+            <h4 class="text-xs font-bold text-white tracking-wide truncate">All Events (Global)</h4>
+            <p class="text-[10px] font-mono text-cyan-300/80">${allPhotosCount} photos indexed</p>
+          </div>
+        `;
+        grid.appendChild(allCard);
+
+        // Individual Event Cards
+        loadedEventsList.forEach(ev => {
+          const isSelected = String(currentEventId) === String(ev.id);
+          const isLocal = ev.source_type === 'local';
+          const card = document.createElement('div');
+          card.className = `cursor-pointer px-4 py-3 rounded-xl flex items-center gap-3 min-w-[220px] max-w-[280px] shrink-0 ${isSelected ? 'glow-card-active' : 'glow-card'}`;
+          card.onclick = () => selectEvent(ev.id);
+
+          const iconClass = isLocal ? 'fa-solid fa-folder text-blue-400' : 'fa-brands fa-google-drive text-emerald-400';
+          const iconBg = isLocal ? 'bg-blue-600/10 border-blue-500/30' : 'bg-emerald-600/10 border-emerald-500/30';
+          const badgeText = isLocal ? 'LOCAL' : 'DRIVE';
+
+          card.innerHTML = `
+            <div class="w-9 h-9 rounded-lg ${iconBg} border flex items-center justify-center shrink-0">
+              <i class="${iconClass}"></i>
+            </div>
+            <div class="truncate flex-1">
+              <div class="flex items-center gap-1.5">
+                <h4 class="text-xs font-bold text-white truncate tracking-tight" title="${ev.name}">${ev.name}</h4>
+                <span class="text-[8px] font-mono font-bold px-1.5 py-0.2 rounded bg-blue-950 border border-blue-800/80 text-cyan-300 shrink-0">${badgeText}</span>
+              </div>
+              <p class="text-[10px] font-mono text-slate-400 mt-0.5">
+                <span class="text-cyan-400 font-semibold">${ev.photo_count || 0}</span> photos · <span class="text-blue-400">${ev.total_faces || 0}</span> faces
+              </p>
+            </div>
+          `;
+          grid.appendChild(card);
         });
 
-        if (prevVal) {
-          selector.value = prevVal;
-          currentEventId = prevVal;
-        }
         await updateStatsForCurrentScope();
       } catch (err) {
         console.error('Failed to load events', err);
       }
     }
 
-    async function updateStatsForCurrentScope() {
-      try {
-        const url = currentEventId ? `/api/stats?event_id=${currentEventId}` : '/api/stats';
-        const res = await fetch(url);
-        const data = await res.json();
-        
-        document.getElementById('statPhotos').textContent = data.total_photos || 0;
-        document.getElementById('statFaces').textContent  = data.total_faces  || 0;
-        document.getElementById('statsBadge').classList.remove('hidden');
+    async function selectEvent(eventId) {
+      currentEventId = eventId ? String(eventId) : '';
+      const matched = loadedEventsList.find(e => String(e.id) === String(currentEventId));
+      currentEventName = matched ? matched.name : 'All Events (Global)';
 
-        // Update icon based on selected event source
-        const icon = document.getElementById('eventSelectorIcon');
-        const selector = document.getElementById('eventSelector');
-        const selectedOpt = selector ? selector.options[selector.selectedIndex] : null;
-        if (icon) {
-          if (!currentEventId) {
-            icon.className = 'fa-solid fa-layer-group text-blue-400 mr-2 text-xs';
-          } else if (selectedOpt && selectedOpt.dataset.source === 'local') {
-            icon.className = 'fa-solid fa-laptop-code text-cyan-400 mr-2 text-xs';
-          } else {
-            icon.className = 'fa-brands fa-google-drive text-emerald-400 mr-2 text-xs';
-          }
-        }
-      } catch (err) {
-        console.error('Failed to update stats for scope', err);
-      }
-    }
+      // Refresh card visual active states
+      await loadEvents();
 
-    async function onEventChanged() {
-      const selector = document.getElementById('eventSelector');
-      currentEventId = selector ? selector.value : '';
+      // Reset search result state
       currentSearchResults = [];
       const tierSummary = document.getElementById('tierSummary');
       if (tierSummary) tierSummary.classList.add('hidden');
       renderPhotoGrid([], false);
 
+      // Update action button visibilities
       const btnResync = document.getElementById('btnResyncEvent');
       const btnFresh = document.getElementById('btnFreshResetEvent');
       const btnDelete = document.getElementById('btnDeleteEvent');
@@ -845,6 +926,20 @@
       }
 
       await updateStatsForCurrentScope();
+    }
+
+    async function updateStatsForCurrentScope() {
+      try {
+        const url = currentEventId ? `/api/stats?event_id=${currentEventId}` : '/api/stats';
+        const res = await fetch(url);
+        const data = await res.json();
+        
+        document.getElementById('statPhotos').textContent = data.total_photos || 0;
+        document.getElementById('statFaces').textContent  = data.total_faces  || 0;
+        document.getElementById('statsBadge').classList.remove('hidden');
+      } catch (err) {
+        console.error('Failed to update stats for scope', err);
+      }
     }
 
     // ── Live Background Sync Progress Polling ──────────────────────────────
@@ -907,12 +1002,11 @@
 
     async function resyncCurrentEvent(freshReset = false) {
       if (!currentEventId) {
-        alert('Please select an event to re-sync.');
+        alert('Please click on an event section card to select it first.');
         return;
       }
 
-      const selector = document.getElementById('eventSelector');
-      const eventName = selector.options[selector.selectedIndex]?.text || `Event #${currentEventId}`;
+      const eventName = currentEventName || `Event #${currentEventId}`;
 
       let confirmPrompt = '';
       if (freshReset) {
@@ -961,12 +1055,11 @@
 
     async function deleteCurrentEvent() {
       if (!currentEventId) {
-        alert('Please select an event to delete.');
+        alert('Please click on an event section card to select it first.');
         return;
       }
 
-      const selector = document.getElementById('eventSelector');
-      const eventName = selector.options[selector.selectedIndex]?.text || `Event #${currentEventId}`;
+      const eventName = currentEventName || `Event #${currentEventId}`;
 
       if (!confirm(`⚠️ Are you sure you want to delete "${eventName}"?\n\nThis will remove the event and all its indexed photos and face data from the system database. (Your actual Google Drive files will not be deleted).`)) {
         return;
@@ -978,8 +1071,9 @@
         if (res.ok) {
           alert(`Event "${eventName}" deleted successfully.`);
           currentEventId = '';
+          currentEventName = 'All Events (Global)';
           await loadEvents();
-          onEventChanged();
+          selectEvent('');
         } else {
           alert('Failed to delete event: ' + (data.detail || 'Unknown error'));
         }
@@ -1002,21 +1096,21 @@
           resultStatus.textContent = 'Upload or capture reference photos on the left, then click "Search Person".';
           resultsGrid.innerHTML = `
             <div class="col-span-full py-20 text-center text-slate-500">
-              <div class="w-16 h-16 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-cyan-400 flex items-center justify-center mx-auto mb-4 text-2xl shadow-inner">
+              <div class="w-16 h-16 rounded-2xl bg-blue-600/10 border border-cyan-500/30 text-cyan-400 flex items-center justify-center mx-auto mb-4 text-2xl shadow-[0_0_25px_rgba(0,180,255,0.2)]">
                 <i class="fa-solid fa-magnifying-glass"></i>
               </div>
-              <h3 class="text-sm font-bold text-slate-300 mb-1">Ready to Search</h3>
-              <p class="text-xs text-slate-500 max-w-sm mx-auto">Upload or take a photo of the person you are looking for. Matched photos will appear here.</p>
+              <h3 class="text-sm font-bold text-slate-200 tracking-wide mb-1">System Standby — Ready to Match</h3>
+              <p class="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">Add a reference selfie or click Live Camera. The AI engine will cross-reference faces across all event subfolders seamlessly.</p>
             </div>`;
         } else {
           resultStatus.textContent = 'No matches found. Try a different or clearer reference photo.';
           resultsGrid.innerHTML = `
             <div class="col-span-full py-20 text-center text-slate-500">
-              <div class="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto mb-4 text-2xl">
+              <div class="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto mb-4 text-2xl shadow-[0_0_20px_rgba(245,158,11,0.2)]">
                 <i class="fa-regular fa-face-frown"></i>
               </div>
-              <h3 class="text-sm font-bold text-slate-300 mb-1">No Matching Faces Found</h3>
-              <p class="text-xs text-slate-500 max-w-sm mx-auto">We could not find any face matching the reference photo in the selected event.</p>
+              <h3 class="text-sm font-bold text-slate-200 tracking-wide mb-1">No Matching Faces Detected</h3>
+              <p class="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">No faces matched the reference photo in "${currentEventName}". Try uploading another angle or a higher-quality photo.</p>
             </div>`;
         }
         return;
@@ -1024,7 +1118,7 @@
 
       items.forEach(item => {
         const card = document.createElement('div');
-        card.className = 'group relative bg-[#0b1329]/90 border border-blue-950 hover:border-cyan-500/60 rounded-xl overflow-hidden shadow-lg transition hover:shadow-cyan-500/10 flex flex-col h-fit';
+        card.className = 'group relative bg-[#050b18] border border-blue-900/60 hover:border-cyan-400/80 rounded-xl overflow-hidden shadow-lg transition-all duration-200 hover:shadow-[0_0_20px_rgba(0,180,255,0.2)] hover:-translate-y-1 flex flex-col h-fit';
         const photoId = item.photo_id;
         const photoName = item.numbered_filename || item.filename;
         const isGDrive = item.source_type === 'gdrive';
@@ -1034,37 +1128,39 @@
         if (item.tier) {
           const s = TIER_STYLES[item.tier] || TIER_STYLES.possible;
           tierBadgeHtml = `
-            <div class="absolute top-2 right-2 flex items-center gap-1 px-2 py-0.5 rounded ${s.bg} backdrop-blur text-[11px] font-bold ${s.text} shadow">
-              <span class="w-1.5 h-1.5 rounded-full ${s.dot} inline-block"></span>
+            <div class="absolute top-2 right-2 flex items-center gap-1.5 px-2 py-0.5 rounded-full ${s.bg} backdrop-blur-md text-[11px] font-mono font-bold ${s.text} shadow-md">
+              <span class="w-1.5 h-1.5 rounded-full ${s.dot} inline-block animate-pulse"></span>
               ${item.percentage}%
             </div>
-            <div class="absolute top-8 right-2 px-1.5 py-0.5 rounded ${s.bg} backdrop-blur text-[9px] font-semibold ${s.text} opacity-90">
+            <div class="absolute top-8 right-2 px-2 py-0.5 rounded-md ${s.bg} backdrop-blur-md text-[9px] font-bold ${s.text} opacity-95">
               ${item.tier_label}
             </div>`;
         }
 
-        // Source badge showing Event/Folder name
+        // Source badge showing Event name
         const sourceBadgeHtml = isGDrive
-          ? `<span class="px-1.5 py-0.5 rounded bg-emerald-950/80 border border-emerald-700/60 text-[9px] text-emerald-300 font-semibold flex items-center gap-1 truncate max-w-[120px]" title="Drive Event: ${eventName}"><i class="fa-brands fa-google-drive"></i> ${eventName}</span>`
-          : `<span class="px-1.5 py-0.5 rounded bg-blue-950/80 border border-blue-800/60 text-[9px] text-blue-300 font-semibold flex items-center gap-1 truncate max-w-[120px]" title="Local Folder: ${eventName}"><i class="fa-solid fa-folder"></i> ${eventName}</span>`;
+          ? `<span class="px-1.5 py-0.5 rounded bg-cyan-950/80 border border-cyan-700/60 text-[9px] text-cyan-300 font-mono font-semibold flex items-center gap-1 truncate max-w-[130px]" title="Drive Event: ${eventName}"><i class="fa-brands fa-google-drive"></i> ${eventName}</span>`
+          : `<span class="px-1.5 py-0.5 rounded bg-blue-950/80 border border-blue-800/60 text-[9px] text-blue-300 font-mono font-semibold flex items-center gap-1 truncate max-w-[130px]" title="Local Folder: ${eventName}"><i class="fa-solid fa-folder"></i> ${eventName}</span>`;
 
         card.innerHTML = `
-          <div class="aspect-square bg-[#050a17] overflow-hidden relative">
+          <div class="aspect-square bg-[#02050c] overflow-hidden relative border-b border-blue-950/60">
             <img src="/api/photos/${photoId}" loading="lazy" class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
             ${tierBadgeHtml}
-            <div class="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/70 backdrop-blur text-[10px] font-mono text-slate-300 flex items-center gap-1.5 max-w-[calc(100%-16px)]">
-              <span>#${item.photo_number || item.photo_id}</span>
+            <div class="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/80 backdrop-blur-md text-[10px] font-mono text-slate-300 flex items-center gap-1.5 max-w-[calc(100%-16px)] border border-blue-900/40">
+              <span class="text-cyan-400 font-bold">#${item.photo_number || item.photo_id}</span>
               ${sourceBadgeHtml}
             </div>
           </div>
-          <div class="p-2.5 flex-1 flex flex-col justify-between">
+          <div class="p-3 flex-1 flex flex-col justify-between space-y-2">
             <div>
-              <p class="text-xs font-semibold text-slate-200 truncate">${item.numbered_filename}</p>
-              <p class="text-[10px] text-slate-400 truncate" title="${item.original_filename}">Original: ${item.original_filename}</p>
+              <p class="text-xs font-bold text-slate-100 truncate">${item.numbered_filename}</p>
+              <p class="text-[10px] text-slate-400 truncate mt-0.5 font-mono" title="${item.original_filename}">${item.original_filename}</p>
             </div>
-            <div class="mt-2 flex items-center justify-between text-[10px] text-slate-500">
-              <span><i class="fa-solid fa-user text-[9px] mr-1 text-blue-400"></i>${item.face_count || 1} face(s)</span>
-              <a href="/api/photos/${photoId}" target="_blank" class="text-cyan-400 hover:text-cyan-300 font-medium">View Full</a>
+            <div class="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-blue-950/60">
+              <span class="flex items-center gap-1"><i class="fa-solid fa-user text-[10px] text-cyan-400"></i> ${item.face_count || 1} face(s)</span>
+              <a href="/api/photos/${photoId}" target="_blank" class="text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1">
+                View <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
+              </a>
             </div>
           </div>`;
         resultsGrid.appendChild(card);
@@ -1324,9 +1420,8 @@
           await loadStats();
           await loadEvents();
           
-          // Auto-select newly synced event
-          currentEventId = d.event_id;
-          document.getElementById('eventSelector').value = currentEventId;
+          // Auto-select newly synced event section card
+          await selectEvent(d.event_id);
         } else {
           alert('Event Sync Failed:\n' + (data.detail || 'Unknown error'));
         }

@@ -37,6 +37,8 @@ def init_db():
             status TEXT DEFAULT 'processed',
             source_type TEXT DEFAULT 'local',
             gdrive_file_id TEXT,
+            section_name TEXT,
+            subfolder_path TEXT,
             indexed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE SET NULL
         )
@@ -51,6 +53,10 @@ def init_db():
         cursor.execute("ALTER TABLE photos ADD COLUMN gdrive_file_id TEXT")
     if "event_id" not in existing_cols:
         cursor.execute("ALTER TABLE photos ADD COLUMN event_id INTEGER REFERENCES events(id)")
+    if "section_name" not in existing_cols:
+        cursor.execute("ALTER TABLE photos ADD COLUMN section_name TEXT")
+    if "subfolder_path" not in existing_cols:
+        cursor.execute("ALTER TABLE photos ADD COLUMN subfolder_path TEXT")
 
     # Ensure a default event exists for existing local photos
     cursor.execute("SELECT id FROM events WHERE name = 'Local Stock Showcase' OR folder_id = 'local_stock'")
@@ -186,13 +192,25 @@ def get_event_by_id(event_id: int) -> Optional[Dict[str, Any]]:
     conn.close()
     return dict(row) if row else None
 
-def insert_photo(photo_number: int, numbered_filename: str, original_filename: str, original_path: str, stored_path: str, face_count: int, source_type: str = "local", gdrive_file_id: Optional[str] = None, event_id: Optional[int] = None) -> int:
+def insert_photo(
+    photo_number: int,
+    numbered_filename: str,
+    original_filename: str,
+    original_path: str,
+    stored_path: str,
+    face_count: int,
+    source_type: str = "local",
+    gdrive_file_id: Optional[str] = None,
+    event_id: Optional[int] = None,
+    section_name: Optional[str] = None,
+    subfolder_path: Optional[str] = None
+) -> int:
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO photos (photo_number, numbered_filename, original_filename, original_path, stored_path, face_count, source_type, gdrive_file_id, event_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (photo_number, numbered_filename, original_filename, original_path, stored_path, face_count, source_type, gdrive_file_id, event_id))
+        INSERT INTO photos (photo_number, numbered_filename, original_filename, original_path, stored_path, face_count, source_type, gdrive_file_id, event_id, section_name, subfolder_path)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (photo_number, numbered_filename, original_filename, original_path, stored_path, face_count, source_type, gdrive_file_id, event_id, section_name, subfolder_path))
     photo_id = cursor.lastrowid
     conn.commit()
     conn.close()
@@ -237,6 +255,7 @@ def get_faces_by_vector_indices(vector_indices: List[int], event_id: Optional[in
 
     query = f"""
         SELECT f.*, p.photo_number, p.numbered_filename, p.original_filename, p.stored_path, p.face_count, p.source_type, p.gdrive_file_id, p.event_id,
+               p.section_name, p.subfolder_path,
                COALESCE(e.name, 'Local Stock Showcase') as event_name
         FROM faces f
         JOIN photos p ON f.photo_id = p.id

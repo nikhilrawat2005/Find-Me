@@ -25,18 +25,23 @@ FIND ME is an **AI-powered face recognition search and event photo management sy
 
 ## 🚀 Key Features
 
+### 📂 Recursive Multi-Level Deep Crawler (Real-World Event Media Support)
+- **Arbitrary Nested Folder Traversal:** Give a single top-level Google Drive link (e.g. `Event_Summit_2026/`) — FIND ME automatically recurses through all nested stages, days, and device folders (`Camera 1`, `Camera 2`, `iPhone 15`, `Day 1/Presentation/photos`, `Cultural_Night/`, etc.).
+- **Fast Video Bypassing & Accidental Photo Rescue:** Instantly skips heavy video formats (`video/*`, `.mp4`, `.mov`, `.avi`, `.mkv`, etc.) with zero bandwidth or processing waste. If photographers accidentally put photos inside video folders, FIND ME detects their image headers/extensions and safely rescues them for indexing.
+- **Section-Aware Sequential Renaming on Drive:** Intelligently derives context-aware prefixes and organizes Drive photos section-by-section (e.g. `Presentation_0001.jpg`, `Inauguration_0001.jpg`, `iPhone_15_0001.jpg`).
+- **Complete User Search Abstraction:** Regardless of internal camera splits, stage folders, or device sections, all photos belong to the master event. Guests and attendees search once and receive a single, consolidated, unified result gallery.
+
 ### ☁️ Autonomous Google Drive Event Pipeline
 - **1-Click Cloud Sync:** Paste any Google Drive folder link to automatically ingest an event.
 - **Permission Pre-flight Verification:** Validates Google Service Account "Editor" permissions before performing operations, preventing silent failures.
-- **Auto Duplicate Cleanup:** Detects and trashes duplicate uploads directly on Drive based on file hash and names.
-- **Direct Drive Renaming & Sequential Indexing:** Auto-renames Drive images cleanly to sequential formats (`photo_0001.jpg`, `photo_0002.jpg`, ...).
+- **Auto Duplicate Cleanup:** Detects and trashes duplicate uploads directly on Drive based on file hash and names across all subfolders.
 - **In-Memory Streaming (Zero Local Disk Waste):** Streams photos into RAM for embedding generation and passes them directly to FAISS without cluttering local storage.
 
 ### 🔄 Intelligent Event Management (Continuation Sync & Clean Fresh Reset)
-- **Incremental Continuation Sync (`Re-Sync`):** Add photos anytime to an existing Drive event! FIND ME detects existing numbers (e.g. `photo_0001` through `photo_0040`), preserves them, automatically assigns continuation numbers (`photo_0041` onwards) to new uploads, and indexes only the new additions into FAISS.
-- **Clean & Fresh Reset (`Fresh Re-Index`):** When you replace or update your entire event folder on Google Drive (e.g. replacing a 55-photo set with 66 photos), 1 click completely wipes the event's previous SQLite and FAISS vector metadata, re-indexes all photos cleanly starting from `photo_0001.jpg`, and rebuilds the vector index without ghost entries.
+- **Incremental Continuation Sync (`Re-Sync`):** Add photos anytime to an existing Drive event! FIND ME detects existing numbers, preserves them, automatically assigns continuation numbers to new uploads, and indexes only the new additions into FAISS.
+- **Clean & Fresh Reset (`Fresh Re-Index`):** When you replace or update your entire event folder on Google Drive, 1 click completely wipes the event's previous SQLite and FAISS vector metadata, re-indexes all photos cleanly starting from `0001`, and rebuilds the vector index without ghost entries.
 - **Live Real-Time Sync Tracker:** An animated progress bar and status tracker live-updates in the UI showing the exact phase (Duplicate cleanup ➔ Renaming ➔ Streaming ➔ Face Indexing `X of Y photos (Z%)`).
-- **Event Deletion & Clean Rebuild:** Delete any event directly from the dropdown. SQLite and FAISS are dynamically re-synced from embedded vectors in milliseconds so deletions leave zero phantom vectors.
+- **Event Deletion & Clean Rebuild:** Delete any event with a single click. SQLite and FAISS are dynamically re-synced from embedded vectors in milliseconds so deletions leave zero phantom vectors.
 
 ### ⚡ High-Performance Multi-Threaded Engine
 - **Concurrent Prefetching Pipeline:** Uses thread-isolated background workers (`ThreadPoolExecutor` + `queue.Queue`) to decouple network downloads from CPU face analysis.
@@ -55,10 +60,10 @@ Every search automatically classifies matches with strict precision rules:
 
 > **Smart Crowd & Group Filter:** For group photos containing >10 faces, loose possible matches are automatically rejected to eliminate false alarms in large audiences.
 
-### 🎨 Deep Black & Electric Blue Cyber UI
-- Sleek dark theme with **Plus Jakarta Sans** typography and neon cyber blue accents.
-- Distinct color coding & badges for **Local Events** (`💻 [LOCAL]`) vs **Google Drive Events** (`☁️ [DRIVE]`).
-- Dynamic header counters automatically display the exact photo and face counts scoped to whichever event is currently selected.
+### 🎨 Executive Cyber Black & Glowing Blue Landing UI
+- **No Dropdowns — Interactive Event Cards:** Dynamic horizontal scrollable event sections with live counters, source badges (`LOCAL` vs `DRIVE`), and neon glowing borders.
+- **Electric Cyan & Deep Pitch Black Palette:** Ultra-clean dark theme (`#03060d`) featuring glowing electric cyan line accents (`.glow-card`, `.neon-line`).
+- **Modern Typography:** Crisp **Inter** paired with **JetBrains Mono** for technical counts and badges, designed like an executive, high-throughput tool.
 
 ### 📷 Dual Input Modes (Upload & Auto-Camera)
 - **Upload Mode:** Drag-and-drop 1–4 clear reference images.
