@@ -351,34 +351,76 @@ class GDriveService:
             "details": duplicates
         }
 
-    def batch_rename_folder(self, folder_id: str, prefix: str = "photo") -> Dict[str, Any]:
+    def batch_rename_folder(self, folder_id: str, prefix: str = "photo", fresh_reset: bool = False) -> Dict[str, Any]:
         """
-        One-click renames all images directly in Google Drive to clean sequential names:
-        e.g., photo_0001.jpg, photo_0002.jpg ...
+        Intelligent Sequential Renamer:
+        - If fresh_reset is True: renames ALL photos sequentially from 0001 (e.g. photo_0001.jpg, photo_0002.jpg...).
+        - If fresh_reset is False (Incremental): keeps existing properly named files (photo_0001 ... photo_0040)
+          and only renames newly added files starting sequentially from max_existing + 1 (e.g. photo_0041 ... photo_0070).
         """
         files = self.list_folder_photos(folder_id)
-        # Sort files consistently by createdTime / name
-        files_sorted = sorted(files, key=lambda x: (x.get("createdTime", ""), x.get("name", "")))
+        pattern = re.compile(rf"^{re.escape(prefix)}_(\d{{4}})\.(jpg|jpeg|png|webp)$", re.IGNORECASE)
 
         renamed_count = 0
         renamed_details = []
 
-        for idx, f in enumerate(files_sorted, start=1):
-            curr_name = f["name"]
-            ext = Path(curr_name).suffix.lower()
-            if not ext or ext not in {".jpg", ".jpeg", ".png", ".webp"}:
-                ext = ".jpg"
+        if fresh_reset:
+            # Sort files consistently by createdTime / name and rename from 0001
+            files_sorted = sorted(files, key=lambda x: (x.get("createdTime", ""), x.get("name", "")))
+            for idx, f in enumerate(files_sorted, start=1):
+                curr_name = f["name"]
+                ext = Path(curr_name).suffix.lower()
+                if not ext or ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+                    ext = ".jpg"
 
-            new_name = f"{prefix}_{idx:04d}{ext}"
-            if curr_name != new_name:
+                new_name = f"{prefix}_{idx:04d}{ext}"
+                if curr_name != new_name:
+                    try:
+                        self.rename_file(f["id"], new_name)
+                        renamed_count += 1
+                        renamed_details.append({
+                            "file_id": f["id"],
+                            "old_name": curr_name,
+                            "new_name": new_name
+                        })
+                    except Exception as e:
+                        print(f"[GDrive Error] Failed to rename {curr_name} to {new_name}: {e}")
+        else:
+            # Incremental Continuation
+            existing_numbers = set()
+            unnamed_files = []
+
+            for f in files:
+                m = pattern.match(f["name"])
+                if m:
+                    existing_numbers.add(int(m.group(1)))
+                else:
+                    unnamed_files.append(f)
+
+            next_idx = (max(existing_numbers) + 1) if existing_numbers else 1
+            unnamed_sorted = sorted(unnamed_files, key=lambda x: (x.get("createdTime", ""), x.get("name", "")))
+
+            for f in unnamed_sorted:
+                # Find next free number
+                while next_idx in existing_numbers:
+                    next_idx += 1
+
+                curr_name = f["name"]
+                ext = Path(curr_name).suffix.lower()
+                if not ext or ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+                    ext = ".jpg"
+
+                new_name = f"{prefix}_{next_idx:04d}{ext}"
                 try:
                     self.rename_file(f["id"], new_name)
+                    existing_numbers.add(next_idx)
                     renamed_count += 1
                     renamed_details.append({
                         "file_id": f["id"],
                         "old_name": curr_name,
                         "new_name": new_name
                     })
+                    next_idx += 1
                 except Exception as e:
                     print(f"[GDrive Error] Failed to rename {curr_name} to {new_name}: {e}")
 

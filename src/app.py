@@ -56,30 +56,28 @@ def api_events():
 @app.delete("/api/events/{event_id}")
 def api_delete_event(event_id: int):
     """
-    Deletes an event along with all its photos and faces.
+    Deletes an event along with all its photos and faces, cleanly rebuilding the FAISS index.
     """
     event = get_event_by_id(event_id)
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     delete_event(event_id)
-    # Rebuild index from remaining faces
-    indexer.init_index()
-    from src.database import get_connection
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("SELECT f.vector_index FROM faces f ORDER BY f.id ASC")
-    # Reload searcher index
+    indexer.rebuild_index_from_db()
     searcher.reload_index()
     return {"status": "success", "message": f"Event '{event['name']}' deleted successfully."}
 
 @app.post("/api/events/{event_id}/resync")
-def api_resync_event(event_id: int):
+def api_resync_event(
+    event_id: int,
+    fresh_reset: bool = Query(default=False, description="If True, completely wipes event database/embeddings and re-indexes all photos from photo_0001")
+):
     """
     Re-synchronizes an existing event with its Google Drive folder:
     - Validates Editor permissions.
+    - If fresh_reset=True: wipes event records & rebuilds FAISS from photo_0001 onwards.
+    - If fresh_reset=False: preserves existing photo numbers and appends only new photos sequentially.
     - Removes newly detected duplicates.
-    - Ensures sequential photo_XXXX naming on Drive.
-    - Indexes any new or unindexed photos.
+    - Indexes unindexed photos in-memory.
     """
     event = get_event_by_id(event_id)
     if not event:
@@ -88,11 +86,23 @@ def api_resync_event(event_id: int):
         raise HTTPException(status_code=400, detail="This event is not linked to a Google Drive folder")
     
     try:
-        result = indexer.sync_event_from_gdrive(folder_id=event["folder_id"], custom_event_name=event["name"])
+        result = indexer.sync_event_from_gdrive(
+            folder_id=event["folder_id"],
+            custom_event_name=event["name"],
+            fresh_reset=fresh_reset
+        )
         searcher.reload_index()
         return {"status": "success", "data": result}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/events/progress")
+def api_events_progress():
+    """
+    Returns real-time progress of ongoing event sync/indexing tasks.
+    """
+    from src.indexer import GLOBAL_SYNC_PROGRESS
+    return GLOBAL_SYNC_PROGRESS
 
 
 @app.get("/api/stats")

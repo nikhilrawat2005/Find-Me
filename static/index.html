@@ -43,9 +43,14 @@
           </select>
         </div>
 
-        <!-- Event Re-Sync Button -->
-        <button id="btnResyncEvent" onclick="resyncCurrentEvent()" title="Re-sync selected event (Checks permissions, deletes dupes, renames & indexes)" class="hidden p-1.5 hover:bg-blue-900/50 text-cyan-400 hover:text-cyan-300 rounded-lg transition" >
+        <!-- Event Re-Sync Button (Incremental) -->
+        <button id="btnResyncEvent" onclick="resyncCurrentEvent(false)" title="Re-sync event (Preserves existing numbers, appends only new photos from Drive)" class="hidden p-1.5 hover:bg-blue-900/50 text-cyan-400 hover:text-cyan-300 rounded-lg transition" >
           <i class="fa-solid fa-rotate"></i>
+        </button>
+
+        <!-- Event Fresh Reset Button (Clean Re-Index from 0001) -->
+        <button id="btnFreshResetEvent" onclick="resyncCurrentEvent(true)" title="Clean & Fresh Re-Index (Wipes old indexed records for this event and indexes all photos starting fresh from photo_0001)" class="hidden p-1.5 hover:bg-amber-950/60 text-amber-400 hover:text-amber-300 rounded-lg transition" >
+          <i class="fa-solid fa-arrows-rotate"></i>
         </button>
 
         <!-- Event Delete Button -->
@@ -268,6 +273,24 @@
         </div>
       </div>
 
+
+      <!-- Live Sync Progress Card (Real-Time Background Tracker) -->
+      <div id="liveSyncCard" class="hidden bg-[#061229] border border-cyan-500/50 rounded-2xl p-4 shadow-xl shadow-cyan-950/40 space-y-3">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-2.5">
+            <div class="w-3 h-3 rounded-full bg-cyan-400 animate-ping"></div>
+            <span id="syncCardTitle" class="text-xs font-bold text-white tracking-wide">Syncing Drive Event...</span>
+          </div>
+          <span id="syncCardPercentage" class="text-xs font-mono font-bold text-cyan-400">0%</span>
+        </div>
+        <div class="w-full bg-[#030a16] h-2.5 rounded-full overflow-hidden border border-blue-950">
+          <div id="syncCardProgressBar" class="bg-gradient-to-r from-blue-600 via-sky-500 to-cyan-400 h-full w-0 transition-all duration-300 rounded-full"></div>
+        </div>
+        <div class="flex items-center justify-between text-[11px] text-slate-400">
+          <span id="syncCardStatusMsg" class="truncate max-w-[80%] font-medium">Initializing pipeline...</span>
+          <span id="syncCardCounts" class="font-mono text-cyan-300">0 / 0</span>
+        </div>
+      </div>
 
       <!-- Loader -->
       <div id="loader" class="hidden py-24 flex flex-col items-center justify-center space-y-4">
@@ -809,19 +832,80 @@
       renderPhotoGrid([], false);
 
       const btnResync = document.getElementById('btnResyncEvent');
+      const btnFresh = document.getElementById('btnFreshResetEvent');
       const btnDelete = document.getElementById('btnDeleteEvent');
       if (currentEventId) {
         if (btnResync) btnResync.classList.remove('hidden');
+        if (btnFresh) btnFresh.classList.remove('hidden');
         if (btnDelete) btnDelete.classList.remove('hidden');
       } else {
         if (btnResync) btnResync.classList.add('hidden');
+        if (btnFresh) btnFresh.classList.add('hidden');
         if (btnDelete) btnDelete.classList.add('hidden');
       }
 
       await updateStatsForCurrentScope();
     }
 
-    async function resyncCurrentEvent() {
+    // ── Live Background Sync Progress Polling ──────────────────────────────
+    let syncPollingInterval = null;
+
+    function startSyncProgressPolling(customTitle) {
+      const card = document.getElementById('liveSyncCard');
+      const titleEl = document.getElementById('syncCardTitle');
+      const pctEl = document.getElementById('syncCardPercentage');
+      const barEl = document.getElementById('syncCardProgressBar');
+      const msgEl = document.getElementById('syncCardStatusMsg');
+      const countsEl = document.getElementById('syncCardCounts');
+
+      if (customTitle && titleEl) titleEl.textContent = customTitle;
+      if (card) card.classList.remove('hidden');
+
+      if (syncPollingInterval) clearInterval(syncPollingInterval);
+
+      syncPollingInterval = setInterval(async () => {
+        try {
+          const res = await fetch('/api/events/progress');
+          if (!res.ok) return;
+          const prog = await res.json();
+
+          if (prog && prog.is_running) {
+            if (titleEl && prog.event_name) titleEl.textContent = `Syncing: ${prog.event_name}`;
+            if (pctEl) pctEl.textContent = `${prog.percentage || 0}%`;
+            if (barEl) barEl.style.width = `${prog.percentage || 0}%`;
+            if (msgEl) msgEl.textContent = prog.message || 'Processing photos...';
+            if (countsEl) countsEl.textContent = `${prog.current || 0} / ${prog.total || 0}`;
+          } else if (prog && prog.phase === 'completed') {
+            if (pctEl) pctEl.textContent = '100%';
+            if (barEl) barEl.style.width = '100%';
+            if (msgEl) msgEl.textContent = prog.message || 'Complete!';
+            if (countsEl) countsEl.textContent = `${prog.total || 0} / ${prog.total || 0}`;
+            clearInterval(syncPollingInterval);
+            syncPollingInterval = null;
+            setTimeout(() => {
+              if (card) card.classList.add('hidden');
+            }, 3000);
+          } else if (prog && prog.phase === 'error') {
+            if (msgEl) msgEl.textContent = prog.message || 'Error occurred during sync';
+            clearInterval(syncPollingInterval);
+            syncPollingInterval = null;
+          }
+        } catch (e) {
+          // ignore transient poll failure
+        }
+      }, 800);
+    }
+
+    function stopSyncProgressPolling() {
+      if (syncPollingInterval) {
+        clearInterval(syncPollingInterval);
+        syncPollingInterval = null;
+      }
+      const card = document.getElementById('liveSyncCard');
+      if (card) card.classList.add('hidden');
+    }
+
+    async function resyncCurrentEvent(freshReset = false) {
       if (!currentEventId) {
         alert('Please select an event to re-sync.');
         return;
@@ -830,35 +914,45 @@
       const selector = document.getElementById('eventSelector');
       const eventName = selector.options[selector.selectedIndex]?.text || `Event #${currentEventId}`;
 
-      if (!confirm(`Re-synchronize "${eventName}"?\n\nThis will:\n1. Verify Google Drive permissions\n2. Remove duplicate photos on Drive\n3. Ensure sequential photo_0001.jpg naming\n4. Turbo-stream and index new photos into FAISS`)) {
+      let confirmPrompt = '';
+      if (freshReset) {
+        confirmPrompt = `⚠️ CLEAN & FRESH RE-INDEX for "${eventName}"?\n\nThis will:\n1. Completely wipe current database and vector entries for this event.\n2. Renumber all Drive photos cleanly starting from photo_0001.jpg.\n3. Re-index all photos and extract fresh embeddings.\n\n(Your photos on Google Drive will NOT be deleted, only renamed & freshly indexed). Continue?`;
+      } else {
+        confirmPrompt = `Re-synchronize "${eventName}" (Incremental)?\n\nThis will:\n1. Keep all existing photo numbers.\n2. Find only NEW unindexed photos and assign continuation numbers.\n3. Index only new photos into FAISS. Continue?`;
+      }
+
+      if (!confirm(confirmPrompt)) {
         return;
       }
 
       loader.classList.remove('hidden');
       resultsGrid.classList.add('hidden');
-      loaderText.textContent = `Turbo re-syncing "${eventName}" with Google Drive...`;
+      loaderText.textContent = freshReset ? `Running Clean Reset & Fresh Indexing on "${eventName}"...` : `Turbo re-syncing "${eventName}" with Google Drive...`;
+      startSyncProgressPolling(freshReset ? `Fresh Reset: ${eventName}` : `Re-syncing: ${eventName}`);
 
       try {
-        const res = await fetch(`/api/events/${currentEventId}/resync`, { method: 'POST' });
+        const res = await fetch(`/api/events/${currentEventId}/resync?fresh_reset=${freshReset}`, { method: 'POST' });
         const data = await res.json();
         loader.classList.add('hidden');
         resultsGrid.classList.remove('hidden');
 
         if (res.ok) {
           const d = data.data;
-          let summaryMsg = `✨ Event "${d.event_name}" Turbo Sync Complete!\n\n`;
+          let summaryMsg = freshReset ? `✨ Clean Fresh Re-Index Complete for "${d.event_name}"!\n\n` : `✨ Incremental Sync Complete for "${d.event_name}"!\n\n`;
           summaryMsg += `• Duplicates Removed: ${d.duplicates_removed}\n`;
           summaryMsg += `• Files Renamed on Drive: ${d.files_renamed}\n`;
-          summaryMsg += `• New Photos Processed: ${d.newly_processed_photos}\n`;
-          summaryMsg += `• Already Synced Photos: ${d.skipped_existing_photos}\n`;
-          summaryMsg += `• Total Photos: ${d.total_photos}`;
+          summaryMsg += `• Newly Processed Photos: ${d.newly_processed_photos}\n`;
+          summaryMsg += `• Skipped Existing Photos: ${d.skipped_existing_photos}\n`;
+          summaryMsg += `• Total Event Photos: ${d.total_photos}`;
 
           alert(summaryMsg);
           await loadEvents();
         } else {
+          stopSyncProgressPolling();
           alert('❌ Re-Sync Failed:\n\n' + (data.detail || 'Unknown error'));
         }
       } catch (err) {
+        stopSyncProgressPolling();
         loader.classList.add('hidden');
         resultsGrid.classList.remove('hidden');
         alert('Network error during Re-Sync: ' + err.message);

@@ -32,9 +32,11 @@ FIND ME is an **AI-powered face recognition search and event photo management sy
 - **Direct Drive Renaming & Sequential Indexing:** Auto-renames Drive images cleanly to sequential formats (`photo_0001.jpg`, `photo_0002.jpg`, ...).
 - **In-Memory Streaming (Zero Local Disk Waste):** Streams photos into RAM for embedding generation and passes them directly to FAISS without cluttering local storage.
 
-### 🔄 Event Management (Re-Sync & Delete)
-- **Per-Event Re-Sync:** Re-check any connected Google Drive folder with 1 click. Verifies permissions, purges newly added duplicates, renames new files sequentially, and indexes unindexed photos.
-- **Event Deletion:** Cleanly delete events and their associated face embeddings from SQLite & FAISS right from the dropdown selector.
+### 🔄 Intelligent Event Management (Continuation Sync & Clean Fresh Reset)
+- **Incremental Continuation Sync (`Re-Sync`):** Add photos anytime to an existing Drive event! FIND ME detects existing numbers (e.g. `photo_0001` through `photo_0040`), preserves them, automatically assigns continuation numbers (`photo_0041` onwards) to new uploads, and indexes only the new additions into FAISS.
+- **Clean & Fresh Reset (`Fresh Re-Index`):** When you replace or update your entire event folder on Google Drive (e.g. replacing a 55-photo set with 66 photos), 1 click completely wipes the event's previous SQLite and FAISS vector metadata, re-indexes all photos cleanly starting from `photo_0001.jpg`, and rebuilds the vector index without ghost entries.
+- **Live Real-Time Sync Tracker:** An animated progress bar and status tracker live-updates in the UI showing the exact phase (Duplicate cleanup ➔ Renaming ➔ Streaming ➔ Face Indexing `X of Y photos (Z%)`).
+- **Event Deletion & Clean Rebuild:** Delete any event directly from the dropdown. SQLite and FAISS are dynamically re-synced from embedded vectors in milliseconds so deletions leave zero phantom vectors.
 
 ### ⚡ High-Performance Multi-Threaded Engine
 - **Concurrent Prefetching Pipeline:** Uses thread-isolated background workers (`ThreadPoolExecutor` + `queue.Queue`) to decouple network downloads from CPU face analysis.

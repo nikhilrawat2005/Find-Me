@@ -1,4 +1,5 @@
 import sqlite3
+import numpy as np
 from typing import Optional, List, Dict, Any
 from src.config import DB_PATH
 
@@ -63,7 +64,7 @@ def init_db():
     # Assign null event_ids to default event
     cursor.execute("UPDATE photos SET event_id = ? WHERE event_id IS NULL AND source_type = 'local'", (default_event_id,))
     
-    # Table 2: Face Embeddings table storing bounding boxes, scores, and FAISS vector index position
+    # Table 2: Face Embeddings table storing bounding boxes, scores, embedding blob, and FAISS vector index position
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS faces (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,9 +75,15 @@ def init_db():
             bbox_x2 REAL,
             bbox_y2 REAL,
             det_score REAL,
+            embedding BLOB,
             FOREIGN KEY (photo_id) REFERENCES photos(id) ON DELETE CASCADE
         )
     """)
+
+    cursor.execute("PRAGMA table_info(faces)")
+    existing_face_cols = [col[1] for col in cursor.fetchall()]
+    if "embedding" not in existing_face_cols:
+        cursor.execute("ALTER TABLE faces ADD COLUMN embedding BLOB")
     
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_photo_number ON photos(photo_number)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_photo_event ON photos(event_id)")
@@ -191,17 +198,30 @@ def insert_photo(photo_number: int, numbered_filename: str, original_filename: s
     conn.close()
     return photo_id
 
-def insert_face(photo_id: int, vector_index: int, bbox: List[float], det_score: float) -> int:
+def insert_face(photo_id: int, vector_index: int, bbox: List[float], det_score: float, embedding: Optional[np.ndarray] = None) -> int:
     conn = get_connection()
     cursor = conn.cursor()
+    emb_blob = embedding.astype(np.float32).tobytes() if embedding is not None else None
     cursor.execute("""
-        INSERT INTO faces (photo_id, vector_index, bbox_x1, bbox_y1, bbox_x2, bbox_y2, det_score)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (photo_id, vector_index, bbox[0], bbox[1], bbox[2], bbox[3], det_score))
+        INSERT INTO faces (photo_id, vector_index, bbox_x1, bbox_y1, bbox_x2, bbox_y2, det_score, embedding)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (photo_id, vector_index, bbox[0], bbox[1], bbox[2], bbox[3], det_score, emb_blob))
     face_id = cursor.lastrowid
     conn.commit()
     conn.close()
     return face_id
+
+def reset_event_photos(event_id: int) -> bool:
+    """
+    Clears all photos and faces belonging to an event so it can be cleanly re-synced from scratch.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM faces WHERE photo_id IN (SELECT id FROM photos WHERE event_id = ?)", (event_id,))
+    cursor.execute("DELETE FROM photos WHERE event_id = ?", (event_id,))
+    conn.commit()
+    conn.close()
+    return True
 
 def get_faces_by_vector_indices(vector_indices: List[int], event_id: Optional[int] = None) -> List[Dict[str, Any]]:
     if not vector_indices:
