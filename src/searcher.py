@@ -7,20 +7,26 @@ from src.config import FAISS_INDEX_PATH
 from src.database import get_faces_by_vector_indices
 from src.face_engine import FaceEngine
 
-# ── 3-Tier matching thresholds ──────────────────────────────────────────────
+# ── Multi-Tier Matching Thresholds ──────────────────────────────────────────
 TIER_STRONG   = 0.52   # score >= 0.52  → Strong Match   🟢
 TIER_LIKELY   = 0.40   # score >= 0.40  → Likely Match   🟡
-TIER_POSSIBLE = 0.30   # score >= 0.30  → Possible Match 🟠
-# All results below TIER_POSSIBLE are discarded.
+TIER_POSSIBLE = 0.30   # score >= 0.30  → Possible Match 🟠 (Only for small/distant faces)
+
+# Face Dimension Boundary (pixels)
+# Faces >= 120px in max dimension are considered regular/large faces (high detail).
+# Faces < 120px are distant/small faces (low resolution/compressed features).
+SMALL_FACE_MAX_DIM = 120.0
+NORMAL_FACE_MIN_SIMILARITY = 0.395  # Normal faces must have at least ~40% similarity
 
 
-def _assign_tier(score: float) -> Dict[str, str]:
+def _assign_tier(score: float, is_small_face: bool = False) -> Dict[str, str]:
     if score >= TIER_STRONG:
         return {"tier": "strong",   "label": "Strong Match",   "color": "green"}
     elif score >= TIER_LIKELY:
         return {"tier": "likely",   "label": "Likely Match",   "color": "amber"}
     else:
-        return {"tier": "possible", "label": "Possible Match", "color": "orange"}
+        label = "Distant Match" if is_small_face else "Possible Match"
+        return {"tier": "possible", "label": label, "color": "orange"}
 
 
 class FaceSearcher:
@@ -42,15 +48,10 @@ class FaceSearcher:
         event_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
-        3-Tier face search:
-        - Searches FAISS at the lowest threshold (0.28) to cast a wide net.
-        - Optionally filters results by event_id.
-        - Every returned result is classified into one of three tiers based on
-          its cosine similarity score:
-            Strong   (>= 0.52) — near-certain match
-            Likely   (>= 0.40) — probable match
-            Possible (>= 0.28) — distant / challenging match
-        - Results are sorted descending by score.
+        Smart Scale-Aware & Crowd-Aware Face Search:
+        - Regular / Large Faces (>=120px): Strict cutoff at 40% (0.40) to prevent false positives.
+        - Distant / Small Faces (<120px): Relaxed cutoff at 30% (0.30) so compressed/distant shots are never missed.
+        - Crowd filter: Group photos with > 10 people discard loose possible matches.
         """
         if self.index is None or self.index.ntotal == 0:
             self.reload_index()
@@ -76,13 +77,13 @@ class FaceSearcher:
 
         query_vector = np.expand_dims(mean_embedding, axis=0).astype(np.float32)
 
-        # ── FAISS search — use wide net (top_k large, low threshold) ──────
+        # ── FAISS search — use wide net (top_k large, floor threshold) ─────
         k = min(top_k, self.index.ntotal)
         scores, indices = self.index.search(query_vector, k)
         scores  = scores[0]
         indices = indices[0]
 
-        # Filter at floor threshold
+        # Filter at absolute floor threshold (0.30)
         valid_matches = [
             (int(idx), float(score))
             for score, idx in zip(scores, indices)
@@ -98,16 +99,29 @@ class FaceSearcher:
         # ── Fetch metadata (filtered by event_id if provided) ──────────────
         db_faces = get_faces_by_vector_indices(valid_indices, event_id=event_id)
 
-
-        # Group by photo — keep highest score per photo
+        # Group by photo — keep highest score per photo while applying scale-aware constraints
         photos_dict: Dict[int, Dict[str, Any]] = {}
         for face_info in db_faces:
-            photo_id  = face_info["photo_id"]
-            vec_idx   = face_info["vector_index"]
+            photo_id   = face_info["photo_id"]
+            vec_idx    = face_info["vector_index"]
             similarity = score_map.get(vec_idx, 0.0)
 
+            # Compute face bounding box dimensions
+            bx1, by1 = face_info["bbox_x1"], face_info["bbox_y1"]
+            bx2, by2 = face_info["bbox_x2"], face_info["bbox_y2"]
+            face_w = max(0.0, float(bx2 - bx1)) if (bx1 is not None and bx2 is not None) else 0.0
+            face_h = max(0.0, float(by2 - by1)) if (by1 is not None and by2 is not None) else 0.0
+            max_face_dim = max(face_w, face_h)
+            is_small = max_face_dim < SMALL_FACE_MAX_DIM
+
+            # Dynamic Scale Rule:
+            # If face is normal/large (clear facial detail), similarity MUST be >= 40% (0.395)
+            # Only genuinely small/distant faces are allowed in the 30% - 39% range.
+            if not is_small and similarity < NORMAL_FACE_MIN_SIMILARITY:
+                continue
+
             if photo_id not in photos_dict:
-                tier_info = _assign_tier(similarity)
+                tier_info = _assign_tier(similarity, is_small_face=is_small)
                 photos_dict[photo_id] = {
                     "photo_id":          photo_id,
                     "photo_number":      face_info["photo_number"],
@@ -118,29 +132,32 @@ class FaceSearcher:
                     "source_type":       face_info.get("source_type", "local"),
                     "gdrive_file_id":    face_info.get("gdrive_file_id"),
                     "event_id":          face_info.get("event_id"),
-                    "event_name":        face_info.get("event_name", "Local Stock Showcase"),
+                    "event_name":        face_info.get("event_name", "Local Stock"),
                     "similarity_score":  round(similarity, 4),
                     "percentage":        round(similarity * 100, 1),
                     "tier":              tier_info["tier"],
                     "tier_label":        tier_info["label"],
                     "tier_color":        tier_info["color"],
+                    "is_small_face":     is_small,
                     "matched_faces":     []
                 }
             else:
                 # Update if this face has a higher score
                 if similarity > photos_dict[photo_id]["similarity_score"]:
-                    tier_info = _assign_tier(similarity)
+                    tier_info = _assign_tier(similarity, is_small_face=is_small)
                     photos_dict[photo_id]["similarity_score"] = round(similarity, 4)
                     photos_dict[photo_id]["percentage"]       = round(similarity * 100, 1)
                     photos_dict[photo_id]["tier"]             = tier_info["tier"]
                     photos_dict[photo_id]["tier_label"]       = tier_info["label"]
                     photos_dict[photo_id]["tier_color"]       = tier_info["color"]
+                    photos_dict[photo_id]["is_small_face"]     = is_small
 
             photos_dict[photo_id]["matched_faces"].append({
-                "face_id": face_info["id"],
-                "score":   round(similarity, 4),
-                "bbox":    [face_info["bbox_x1"], face_info["bbox_y1"],
-                            face_info["bbox_x2"], face_info["bbox_y2"]]
+                "face_id":       face_info["id"],
+                "score":         round(similarity, 4),
+                "max_face_dim":  round(max_face_dim, 1),
+                "is_small_face": is_small,
+                "bbox":          [bx1, by1, bx2, by2]
             })
 
         # ── Sort descending by score ───────────────────────────────────────
@@ -151,8 +168,8 @@ class FaceSearcher:
         )
 
         # ── Group-photo filter ─────────────────────────────────────────────
-        # If a photo has > 10 faces (crowd/group shot), a "Possible" match is
-        # too risky — too many people to be confident. Only keep Strong/Likely.
+        # If a photo has > 10 faces (crowd/group shot), a loose "Possible" match is
+        # rejected to eliminate false alarms in large audiences.
         GROUP_FACE_THRESHOLD = 10
         filtered_results = [
             r for r in sorted_results
