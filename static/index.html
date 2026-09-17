@@ -5,63 +5,69 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>FIND ME - Face Recognition Photo Search</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
+    body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #030712; }
     #cameraVideo { transform: scaleX(-1); } /* Mirror for selfie feel */
-    .tab-active   { background: #4f46e5; color: #fff; }
-    .tab-inactive { background: transparent; color: #94a3b8; }
-    .tab-inactive:hover { color: #e2e8f0; background: rgba(255,255,255,0.05); }
+    .tab-active   { background: #2563eb; color: #fff; box-shadow: 0 0 15px rgba(37,99,235,0.4); }
+    .tab-inactive { background: transparent; color: #64748b; }
+    .tab-inactive:hover { color: #cbd5e1; background: rgba(255,255,255,0.03); }
+    .electric-border { border-color: rgba(56, 189, 248, 0.2); }
+    .electric-glow { box-shadow: 0 0 20px rgba(14, 165, 233, 0.15); }
   </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased flex flex-col">
+<body class="bg-[#030712] text-slate-100 min-h-screen antialiased flex flex-col selection:bg-blue-600 selection:text-white">
 
   <!-- Header -->
-  <header class="border-b border-slate-800 bg-slate-900/60 backdrop-blur sticky top-0 z-50 px-6 py-4 flex items-center justify-between">
+  <header class="border-b border-blue-950/60 bg-[#070d1d]/80 backdrop-blur sticky top-0 z-50 px-6 py-4 flex items-center justify-between">
     <div class="flex items-center space-x-3">
-      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-xl font-bold shadow-lg shadow-indigo-500/25">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-blue-500 to-cyan-400 flex items-center justify-center text-xl font-bold shadow-lg shadow-blue-500/30 text-white">
         <i class="fa-solid fa-face-smile"></i>
       </div>
       <div>
-        <h1 class="text-xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-200 to-indigo-300 bg-clip-text text-transparent">FIND ME</h1>
-        <p class="text-xs text-slate-400">Face Recognition &amp; Vector Search System</p>
+        <h1 class="text-xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-100 to-blue-400 bg-clip-text text-transparent">FIND ME</h1>
+        <p class="text-xs text-blue-300/70 font-medium">Face Recognition &amp; Vector Search System</p>
       </div>
     </div>
     <div class="flex items-center space-x-3">
       <!-- Active Event Selector & Management -->
-      <div class="flex items-center space-x-1.5 bg-slate-800/90 border border-slate-700/80 rounded-lg p-1 text-xs shadow-inner">
-        <div class="flex items-center px-1.5 py-0.5">
-          <i class="fa-solid fa-calendar-days text-indigo-400 mr-2"></i>
-          <span class="text-slate-400 mr-1.5 hidden sm:inline">Event:</span>
-          <select id="eventSelector" onchange="onEventChanged()" class="bg-transparent text-slate-100 font-semibold focus:outline-none cursor-pointer text-xs pr-1 max-w-[140px] sm:max-w-[200px] truncate">
-            <option value="" class="bg-slate-900 text-slate-200">All Events</option>
+      <div class="flex items-center space-x-1.5 bg-[#0b1329] border border-blue-900/60 rounded-xl p-1 text-xs shadow-inner">
+        <div class="flex items-center px-2 py-0.5">
+          <i id="eventSelectorIcon" class="fa-solid fa-layer-group text-blue-400 mr-2 text-xs"></i>
+          <span class="text-slate-400 mr-1.5 hidden sm:inline font-medium">Event:</span>
+          <select id="eventSelector" onchange="onEventChanged()" class="bg-transparent text-slate-100 font-semibold focus:outline-none cursor-pointer text-xs pr-1 max-w-[150px] sm:max-w-[220px] truncate">
+            <option value="" class="bg-[#0b1329] text-slate-200">🌐 All Events (Total)</option>
           </select>
         </div>
 
         <!-- Event Re-Sync Button -->
-        <button id="btnResyncEvent" onclick="resyncCurrentEvent()" title="Re-sync selected event (Checks permissions, deletes dupes, renames & indexes)" class="hidden p-1.5 hover:bg-slate-700 text-emerald-400 hover:text-emerald-300 rounded-md transition" >
+        <button id="btnResyncEvent" onclick="resyncCurrentEvent()" title="Re-sync selected event (Checks permissions, deletes dupes, renames & indexes)" class="hidden p-1.5 hover:bg-blue-900/50 text-cyan-400 hover:text-cyan-300 rounded-lg transition" >
           <i class="fa-solid fa-rotate"></i>
         </button>
 
         <!-- Event Delete Button -->
-        <button id="btnDeleteEvent" onclick="deleteCurrentEvent()" title="Delete selected event and its indexed data" class="hidden p-1.5 hover:bg-red-950/60 text-red-400 hover:text-red-300 rounded-md transition" >
+        <button id="btnDeleteEvent" onclick="deleteCurrentEvent()" title="Delete selected event and its indexed data" class="hidden p-1.5 hover:bg-red-950/60 text-red-400 hover:text-red-300 rounded-lg transition" >
           <i class="fa-solid fa-trash-can"></i>
         </button>
       </div>
 
-      <div id="statsBadge" class="hidden md:flex items-center space-x-3 bg-slate-800/80 border border-slate-700/60 px-3 py-1.5 rounded-full text-xs text-slate-300">
-        <span><i class="fa-solid fa-images text-indigo-400 mr-1.5"></i><strong id="statPhotos">0</strong> Photos</span>
-        <span class="text-slate-600">|</span>
-        <span><i class="fa-solid fa-id-badge text-purple-400 mr-1.5"></i><strong id="statFaces">0</strong> Faces</span>
+      <div id="statsBadge" class="hidden md:flex items-center space-x-3 bg-[#0b1329] border border-blue-900/50 px-3.5 py-1.5 rounded-full text-xs text-slate-200 shadow-sm">
+        <span><i class="fa-solid fa-images text-blue-400 mr-1.5"></i><strong id="statPhotos" class="text-white font-bold">0</strong> Photos</span>
+        <span class="text-blue-900/80">|</span>
+        <span><i class="fa-solid fa-id-badge text-cyan-400 mr-1.5"></i><strong id="statFaces" class="text-white font-bold">0</strong> Faces</span>
       </div>
 
       <!-- Local Stock Scan Button -->
-      <button id="btnIndex" title="Scan local stock/ folder" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition rounded-lg text-xs font-semibold flex items-center space-x-1.5 shadow-sm active:scale-95 text-slate-300">
-        <i class="fa-solid fa-folder"></i>
+      <button id="btnIndex" title="Scan local/ folder and subfolders" class="px-3.5 py-1.5 bg-[#0b1329] hover:bg-blue-950/60 border border-blue-800/60 hover:border-blue-500/60 transition rounded-xl text-xs font-semibold flex items-center space-x-2 shadow-sm active:scale-95 text-blue-200">
+        <i class="fa-solid fa-folder-tree text-blue-400"></i>
         <span class="hidden sm:inline">Scan Local</span>
       </button>
 
       <!-- Sync / Add Event Button -->
-      <button id="btnOpenGDriveModal" title="Sync or Add Event from Google Drive" class="px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 transition rounded-lg text-xs font-semibold flex items-center space-x-2 shadow-md shadow-emerald-600/20 active:scale-95 text-white">
+      <button id="btnOpenGDriveModal" title="Sync or Add Event from Google Drive" class="px-3.5 py-1.5 bg-gradient-to-r from-blue-600 via-sky-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 transition rounded-xl text-xs font-semibold flex items-center space-x-2 shadow-md shadow-cyan-500/20 active:scale-95 text-white">
         <i class="fa-brands fa-google-drive text-sm"></i>
         <span>Add / Sync Event</span>
       </button>
@@ -73,34 +79,34 @@
 
     <!-- ── Left Column ─────────────────────────────────────────────────── -->
     <section class="lg:col-span-4 space-y-5">
-      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+      <div class="bg-[#0b1329]/80 border border-blue-950/80 rounded-2xl p-6 shadow-2xl space-y-4 backdrop-blur">
 
         <!-- Title -->
-        <h2 class="text-base font-bold text-slate-100 flex items-center">
-          <i class="fa-solid fa-user-check text-indigo-400 mr-2.5"></i> Add Reference Photos
+        <h2 class="text-base font-bold text-white flex items-center">
+          <i class="fa-solid fa-user-check text-cyan-400 mr-2.5"></i> Add Reference Photos
         </h2>
         <p class="text-xs text-slate-400 leading-relaxed">
           Upload or capture 1–4 photos of the person. The system searches all three confidence levels automatically.
         </p>
 
         <!-- ── Input Mode Tabs ─────────────────────────────────────────── -->
-        <div class="flex rounded-xl overflow-hidden border border-slate-700 text-xs font-semibold">
+        <div class="flex rounded-xl overflow-hidden border border-blue-900/60 bg-[#060c1c] text-xs font-semibold p-0.5">
           <button id="tabUpload" onclick="switchTab('upload')"
-            class="tab-active flex-1 py-2 flex items-center justify-center gap-1.5 transition rounded-l-xl">
+            class="tab-active flex-1 py-2 flex items-center justify-center gap-1.5 transition rounded-lg">
             <i class="fa-solid fa-upload text-[11px]"></i> Upload Photo
           </button>
           <button id="tabCamera" onclick="switchTab('camera')"
-            class="tab-inactive flex-1 py-2 flex items-center justify-center gap-1.5 transition rounded-r-xl">
+            class="tab-inactive flex-1 py-2 flex items-center justify-center gap-1.5 transition rounded-lg">
             <i class="fa-solid fa-camera text-[11px]"></i> Use Camera
           </button>
         </div>
 
         <!-- ── UPLOAD PANEL ────────────────────────────────────────────── -->
         <div id="panelUpload">
-          <div id="dropzone" class="border-2 border-dashed border-slate-700 hover:border-indigo-500/80 transition-all rounded-xl p-6 text-center cursor-pointer bg-slate-950/40 hover:bg-slate-900/60">
+          <div id="dropzone" class="border-2 border-dashed border-blue-900/60 hover:border-cyan-400/80 transition-all rounded-xl p-6 text-center cursor-pointer bg-[#050a17]/80 hover:bg-[#091226]/80 group">
             <input type="file" id="fileInput" multiple accept="image/*" class="hidden">
-            <i class="fa-solid fa-images text-3xl text-slate-500 mb-3 block"></i>
-            <p class="text-sm font-medium text-slate-200">Drag &amp; drop or click to upload</p>
+            <i class="fa-solid fa-cloud-arrow-up text-3xl text-blue-500/70 group-hover:text-cyan-400 transition mb-3 block"></i>
+            <p class="text-sm font-semibold text-slate-200 group-hover:text-white transition">Drag &amp; drop or click to upload</p>
             <p class="text-xs text-slate-500 mt-1">PNG, JPG, WEBP &nbsp;·&nbsp; Max 4 images</p>
           </div>
         </div>
@@ -109,39 +115,39 @@
         <div id="panelCamera" class="hidden space-y-3">
 
           <!-- Video preview -->
-          <div class="relative rounded-xl overflow-hidden bg-slate-950 border border-slate-700" style="aspect-ratio:4/3">
+          <div class="relative rounded-xl overflow-hidden bg-black border border-blue-900/70" style="aspect-ratio:4/3">
             <video id="cameraVideo" autoplay playsinline muted
               class="w-full h-full object-cover"></video>
 
             <!-- Overlay when camera not started -->
             <div id="cameraPlaceholder" class="absolute inset-0 flex flex-col items-center justify-center text-slate-500 space-y-2">
-              <i class="fa-solid fa-video-slash text-4xl"></i>
+              <i class="fa-solid fa-video-slash text-4xl text-blue-900/60"></i>
               <p class="text-xs">Camera not started</p>
             </div>
 
             <!-- Face guide oval — color changes on detection -->
             <div id="cameraGuide" class="hidden absolute inset-0 flex flex-col items-center justify-center pointer-events-none gap-2">
               <div id="faceOval" class="w-36 h-44 rounded-full border-[3px] border-dashed transition-all duration-300"
-                style="border-color:rgba(99,102,241,0.55)"></div>
+                style="border-color:rgba(56,189,248,0.55)"></div>
               <!-- Status label under oval -->
               <div id="faceStatusLabel" class="px-3 py-0.5 rounded-full text-[11px] font-bold backdrop-blur-sm"
-                style="background:rgba(0,0,0,0.55);color:#94a3b8">
+                style="background:rgba(0,0,0,0.65);color:#94a3b8">
                 Align face in oval
               </div>
             </div>
 
             <!-- Countdown ring overlay (shown just before capture) -->
             <div id="countdownOverlay" class="hidden absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div id="countdownNum" class="text-6xl font-black text-white drop-shadow-lg" style="text-shadow:0 0 20px rgba(99,102,241,0.8)"></div>
+              <div id="countdownNum" class="text-6xl font-black text-cyan-300 drop-shadow-lg" style="text-shadow:0 0 20px rgba(6,182,212,0.8)"></div>
             </div>
 
             <!-- Capture count badge -->
-            <div id="captureBadge" class="hidden absolute top-2 left-2 px-2 py-0.5 rounded bg-indigo-600/90 text-[11px] font-bold text-white">
+            <div id="captureBadge" class="hidden absolute top-2 left-2 px-2 py-0.5 rounded bg-blue-600/90 text-[11px] font-bold text-white shadow">
               0 / 4
             </div>
 
             <!-- Auto mode badge -->
-            <div id="autoModeBadge" class="hidden absolute top-2 right-2 px-2 py-0.5 rounded bg-emerald-600/90 text-[10px] font-bold text-white flex items-center gap-1">
+            <div id="autoModeBadge" class="hidden absolute top-2 right-2 px-2 py-0.5 rounded bg-cyan-600/90 text-[10px] font-bold text-white flex items-center gap-1 shadow">
               <span class="w-1.5 h-1.5 rounded-full bg-white animate-pulse inline-block"></span> AUTO
             </div>
           </div>
@@ -158,21 +164,21 @@
           <!-- Camera controls -->
           <div class="flex gap-2">
             <button id="btnStartCamera" onclick="startCamera()"
-              class="flex-1 py-2 bg-slate-700 hover:bg-slate-600 transition rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 active:scale-95">
+              class="flex-1 py-2 bg-blue-950/80 hover:bg-blue-900/80 text-blue-200 border border-blue-800/60 transition rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 active:scale-95">
               <i class="fa-solid fa-video"></i> Start Camera
             </button>
             <button id="btnCapture" onclick="captureFrame()" disabled
-              class="flex-1 py-2 bg-indigo-600/70 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 active:scale-95">
+              class="flex-1 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 active:scale-95 text-white shadow-md shadow-blue-600/20">
               <i class="fa-solid fa-camera-retro"></i> Manual
             </button>
             <button id="btnStopCamera" onclick="stopCamera()" disabled
-              class="py-2 px-3 bg-slate-800 hover:bg-red-900/60 disabled:opacity-40 disabled:cursor-not-allowed transition rounded-lg text-xs font-semibold active:scale-95" title="Stop camera">
+              class="py-2 px-3 bg-[#0a1020] hover:bg-red-950/60 disabled:opacity-40 disabled:cursor-not-allowed border border-blue-950 transition rounded-xl text-xs font-semibold active:scale-95" title="Stop camera">
               <i class="fa-solid fa-stop text-red-400"></i>
             </button>
           </div>
           <!-- Auto-detect status line -->
           <div id="autoStatusLine" class="hidden text-center">
-            <p id="autoStatusText" class="text-[11px] text-emerald-400 font-medium">
+            <p id="autoStatusText" class="text-[11px] text-cyan-400 font-medium">
               <i class="fa-solid fa-circle-dot animate-pulse mr-1"></i>Auto-capture active — look into the oval
             </p>
           </div>
@@ -191,40 +197,40 @@
         </div>
 
         <!-- ── 3-Tier Info ──────────────────────────────────────────────── -->
-        <div class="bg-slate-950/60 border border-slate-800 rounded-xl p-3 space-y-2">
-          <p class="text-[11px] font-semibold text-slate-300 flex items-center">
-            <i class="fa-solid fa-layer-group text-indigo-400 mr-1.5"></i> 3-Level Smart Search
+        <div class="bg-[#050a17]/90 border border-blue-950/90 rounded-xl p-3 space-y-2">
+          <p class="text-[11px] font-semibold text-cyan-300 flex items-center">
+            <i class="fa-solid fa-layer-group text-blue-400 mr-1.5"></i> 3-Level Smart Search
           </p>
           <div class="space-y-1.5 text-[11px]">
             <div class="flex items-center justify-between">
-              <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span><span class="text-slate-300">Strong Match</span></span>
-              <span class="text-slate-500 font-mono">score ≥ 0.52</span>
+              <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-cyan-400 inline-block"></span><span class="text-slate-300">Strong Match</span></span>
+              <span class="text-cyan-400/70 font-mono">score ≥ 0.52</span>
             </div>
             <div class="flex items-center justify-between">
-              <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span><span class="text-slate-300">Likely Match</span></span>
-              <span class="text-slate-500 font-mono">0.40 – 0.52</span>
+              <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-blue-400 inline-block"></span><span class="text-slate-300">Likely Match</span></span>
+              <span class="text-blue-400/70 font-mono">0.40 – 0.52</span>
             </div>
             <div class="flex items-center justify-between">
-              <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-orange-400 inline-block"></span><span class="text-slate-300">Possible Match</span></span>
-              <span class="text-slate-500 font-mono">0.30 – 0.40</span>
+              <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-sky-500 inline-block"></span><span class="text-slate-300">Possible Match</span></span>
+              <span class="text-sky-400/70 font-mono">0.30 – 0.40</span>
             </div>
           </div>
         </div>
 
         <!-- Search Button -->
         <button id="btnSearch"
-          class="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded-xl shadow-lg shadow-indigo-600/25 transition active:scale-[0.98] flex items-center justify-center space-x-2">
+          class="w-full py-3.5 bg-gradient-to-r from-blue-600 via-sky-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold rounded-xl shadow-lg shadow-blue-500/25 transition active:scale-[0.98] flex items-center justify-center space-x-2">
           <i class="fa-solid fa-magnifying-glass"></i>
           <span>Search Person</span>
         </button>
       </div>
 
       <!-- Protection Note -->
-      <div class="bg-slate-900/50 border border-slate-800/80 rounded-xl p-4 text-xs text-slate-400 space-y-2">
-        <div class="flex items-center text-slate-300 font-semibold">
-          <i class="fa-solid fa-shield-halved text-emerald-400 mr-2"></i> Non-Destructive Protection
+      <div class="bg-[#0b1329]/60 border border-blue-950/80 rounded-xl p-4 text-xs text-slate-400 space-y-2">
+        <div class="flex items-center text-cyan-300 font-semibold">
+          <i class="fa-solid fa-shield-halved text-cyan-400 mr-2"></i> Non-Destructive Protection
         </div>
-        <p>Original photos in <code class="text-indigo-300 font-mono">stock/</code> are preserved. Indexed into <code class="text-indigo-300 font-mono">data/processed_photos/</code> with FAISS.</p>
+        <p>Original photos in <code class="text-cyan-300 font-mono">local/</code> are preserved. Indexed into <code class="text-blue-400 font-mono">data/processed_photos/</code> with FAISS.</p>
       </div>
     </section>
 
@@ -233,7 +239,7 @@
       <div class="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 class="text-lg font-bold text-white flex items-center">
-            <i class="fa-solid fa-bullseye text-indigo-400 mr-2.5"></i> Matched Output Photos
+            <i class="fa-solid fa-bullseye text-cyan-400 mr-2.5"></i> Matched Output Photos
           </h2>
           <p id="resultStatus" class="text-xs text-slate-400 mt-0.5">Upload or capture reference photos on the left, then click "Search Person".</p>
         </div>
@@ -241,21 +247,21 @@
         <div class="flex items-center gap-3 flex-wrap">
           <!-- Tier Summary Badges & Action Buttons -->
           <div id="tierSummary" class="hidden flex flex-wrap items-center gap-2">
-            <span id="badgeStrong" class="hidden items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-900/60 border border-emerald-700/50 text-emerald-300">
-              <span class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span><span id="countStrong">0</span> Strong
+            <span id="badgeStrong" class="hidden items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-cyan-950/70 border border-cyan-500/50 text-cyan-300">
+              <span class="w-2 h-2 rounded-full bg-cyan-400 inline-block"></span><span id="countStrong">0</span> Strong
             </span>
-            <span id="badgeLikely" class="hidden items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-900/60 border border-amber-700/50 text-amber-300">
-              <span class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span><span id="countLikely">0</span> Likely
+            <span id="badgeLikely" class="hidden items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-950/70 border border-blue-500/50 text-blue-300">
+              <span class="w-2 h-2 rounded-full bg-blue-400 inline-block"></span><span id="countLikely">0</span> Likely
             </span>
-            <span id="badgePossible" class="hidden items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-orange-900/60 border border-orange-700/50 text-orange-300">
-              <span class="w-2 h-2 rounded-full bg-orange-400 inline-block"></span><span id="countPossible">0</span> Possible
+            <span id="badgePossible" class="hidden items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-sky-950/70 border border-sky-500/50 text-sky-300">
+              <span class="w-2 h-2 rounded-full bg-sky-400 inline-block"></span><span id="countPossible">0</span> Possible
             </span>
             <!-- Download All Matches ZIP -->
-            <button id="btnDownloadZip" onclick="downloadAllMatchesZip()" title="Download all matched photos as ZIP" class="px-3 py-1 rounded-full text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1.5 shadow-sm transition active:scale-95">
+            <button id="btnDownloadZip" onclick="downloadAllMatchesZip()" title="Download all matched photos as ZIP" class="px-3 py-1 rounded-full text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white flex items-center gap-1.5 shadow-md shadow-blue-500/20 transition active:scale-95">
               <i class="fa-solid fa-file-zipper"></i> Download All
             </button>
             <!-- Export JSON metadata -->
-            <button id="btnExportJson" onclick="exportMatchesJson()" title="Download structured JSON results" class="px-3 py-1 rounded-full text-xs font-semibold bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 flex items-center gap-1.5 transition active:scale-95">
+            <button id="btnExportJson" onclick="exportMatchesJson()" title="Download structured JSON results" class="px-3 py-1 rounded-full text-xs font-semibold bg-[#0b1329] hover:bg-blue-950/60 border border-blue-900/80 text-blue-200 flex items-center gap-1.5 transition active:scale-95">
               <i class="fa-solid fa-code"></i> JSON
             </button>
           </div>
@@ -265,8 +271,8 @@
 
       <!-- Loader -->
       <div id="loader" class="hidden py-24 flex flex-col items-center justify-center space-y-4">
-        <div class="w-12 h-12 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin"></div>
-        <p id="loaderText" class="text-sm text-slate-400">Searching across all confidence levels...</p>
+        <div class="w-12 h-12 border-4 border-blue-500/20 border-t-cyan-400 rounded-full animate-spin"></div>
+        <p id="loaderText" class="text-sm text-blue-300/80 font-medium">Searching across all confidence levels...</p>
       </div>
 
       <!-- Gallery Grid -->
@@ -276,18 +282,18 @@
   </main>
 
   <!-- ── Google Drive Sync Modal ───────────────────────────────────────────── -->
-  <div id="gdriveModal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+  <div id="gdriveModal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="bg-[#080e1e] border border-blue-900/60 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
       
       <!-- Modal Header -->
-      <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/40">
+      <div class="px-6 py-4 border-b border-blue-950/80 flex items-center justify-between bg-[#040813]">
         <div class="flex items-center space-x-2.5">
-          <div class="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+          <div class="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-cyan-400">
             <i class="fa-brands fa-google-drive text-base"></i>
           </div>
           <div>
             <h3 class="text-sm font-bold text-white">Google Drive Integration</h3>
-            <p class="text-[11px] text-slate-400">Sync and index photos directly from a Google Drive folder</p>
+            <p class="text-[11px] text-blue-300/70">Sync and index photos directly from a Google Drive folder</p>
           </div>
         </div>
         <button onclick="closeGDriveModal()" class="text-slate-400 hover:text-white transition p-1 text-base">
@@ -299,14 +305,14 @@
       <div class="p-6 space-y-4 text-xs">
         
         <!-- Connection Status Card -->
-        <div id="gdriveStatusBox" class="p-3.5 rounded-xl border border-slate-800 bg-slate-950/60 flex items-start gap-3">
+        <div id="gdriveStatusBox" class="p-3.5 rounded-xl border border-blue-950 bg-[#050a17] flex items-start gap-3">
           <div id="gdriveStatusIcon" class="mt-0.5 text-base text-slate-400">
             <i class="fa-solid fa-spinner animate-spin"></i>
           </div>
           <div class="flex-1 space-y-1">
             <div class="flex items-center justify-between">
               <span id="gdriveStatusTitle" class="font-semibold text-slate-300">Checking Drive connection...</span>
-              <span id="gdriveAuthBadge" class="hidden text-[10px] px-2 py-0.5 rounded-full font-medium bg-slate-800 text-slate-400"></span>
+              <span id="gdriveAuthBadge" class="hidden text-[10px] px-2 py-0.5 rounded-full font-medium bg-blue-950/80 border border-blue-800/60 text-cyan-300"></span>
             </div>
             <p id="gdriveStatusDesc" class="text-slate-400 leading-relaxed">Verifying credentials file...</p>
           </div>
@@ -318,7 +324,7 @@
             Event Name <span class="text-[10px] text-slate-400 font-normal">(Optional - auto-detected from Drive folder)</span>
           </label>
           <input type="text" id="gdriveEventNameInput" placeholder="e.g. Rahul Wedding 2026, Birthday Party, etc."
-            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-xs">
+            class="w-full px-3.5 py-2.5 rounded-xl bg-[#050a17] border border-blue-900/60 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 text-xs">
         </div>
 
         <!-- Folder ID / URL input -->
@@ -327,46 +333,44 @@
             Google Drive Folder Link or Folder ID
           </label>
           <input type="text" id="gdriveFolderInput" placeholder="https://drive.google.com/drive/folders/1abc... or 1abc..."
-            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-xs font-mono">
+            class="w-full px-3.5 py-2.5 rounded-xl bg-[#050a17] border border-blue-900/60 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 text-xs font-mono">
           <p class="text-[11px] text-slate-400 leading-relaxed">
             Folder ko Service Account email ke saath share karein (Editor permission zaroori hai).
           </p>
         </div>
 
         <!-- Autonomous Pipeline Highlights -->
-        <div class="space-y-2 bg-slate-950/60 border border-slate-800 p-3.5 rounded-xl text-slate-300">
-          <div class="text-[11px] font-bold text-emerald-400 flex items-center gap-1.5">
-            <i class="fa-solid fa-wand-magic-sparkles"></i> 1-Click Autonomous Event Pipeline:
+        <div class="space-y-2 bg-[#050a17]/90 border border-blue-950 p-3.5 rounded-xl text-slate-300">
+          <div class="text-[11px] font-bold text-cyan-400 flex items-center gap-1.5">
+            <i class="fa-solid fa-wand-magic-sparkles"></i> 1-Click Turbo Event Pipeline:
           </div>
           <ul class="text-[11px] text-slate-400 space-y-1 list-disc list-inside">
-            <li><strong class="text-slate-300">Auto-Trash Duplicates:</strong> Same name/hash files Drive se trash ho jayengi.</li>
-            <li><strong class="text-slate-300">Auto-Rename:</strong> Files cleanly <code class="text-indigo-300 font-mono">photo_0001.jpg</code>... format mein rename hongi.</li>
-            <li><strong class="text-slate-300">Direct In-Memory Indexing:</strong> Disk bhare bina RAM mein face embeddings banengi.</li>
-            <li><strong class="text-slate-300">Event Isolated:</strong> Har event ka data alag save hoga!</li>
+            <li><strong class="text-slate-200">Auto-Trash Duplicates:</strong> Same name/hash files Drive se trash ho jayengi.</li>
+            <li><strong class="text-slate-200">Auto-Rename:</strong> Files cleanly <code class="text-cyan-300 font-mono">photo_0001.jpg</code>... format mein rename hongi.</li>
+            <li><strong class="text-slate-200">Multi-Thread Stream:</strong> Background pre-fetching + downscaled fast InsightFace extraction.</li>
+            <li><strong class="text-slate-200">Event Isolated:</strong> Har event ka data alag save hoga!</li>
           </ul>
         </div>
 
         <!-- Progress or Logs -->
-        <div id="gdriveProgressBox" class="hidden p-3 rounded-xl bg-emerald-950/30 border border-emerald-800/40 text-emerald-300 text-xs flex items-center gap-2">
-          <i class="fa-solid fa-arrows-rotate animate-spin text-emerald-400 shrink-0"></i>
+        <div id="gdriveProgressBox" class="hidden p-3 rounded-xl bg-blue-950/40 border border-blue-800/40 text-cyan-300 text-xs flex items-center gap-2">
+          <i class="fa-solid fa-arrows-rotate animate-spin text-cyan-400 shrink-0"></i>
           <span id="gdriveProgressMsg">Syncing event photos from Drive...</span>
         </div>
-
-
 
       </div>
 
       <!-- Modal Footer -->
-      <div class="px-6 py-3.5 border-t border-slate-800 bg-slate-950/30 flex items-center justify-between">
-        <button onclick="checkGDriveStatus()" class="text-slate-400 hover:text-slate-200 text-xs flex items-center gap-1.5 transition">
+      <div class="px-6 py-3.5 border-t border-blue-950/80 bg-[#040813] flex items-center justify-between">
+        <button onclick="checkGDriveStatus()" class="text-slate-400 hover:text-cyan-300 text-xs flex items-center gap-1.5 transition">
           <i class="fa-solid fa-arrows-rotate text-[10px]"></i> Re-check Status
         </button>
         <div class="flex gap-2">
-          <button onclick="closeGDriveModal()" class="px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800 text-xs font-semibold transition">
+          <button onclick="closeGDriveModal()" class="px-3.5 py-1.5 rounded-xl border border-blue-900/60 text-slate-300 hover:bg-blue-950/60 text-xs font-semibold transition">
             Close
           </button>
-          <button id="btnStartGDriveSync" onclick="startGDriveSync()" class="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-emerald-600/20 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed">
-            <i class="fa-solid fa-cloud-arrow-down"></i> Start Sync
+          <button id="btnStartGDriveSync" onclick="startGDriveSync()" class="px-4 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 via-sky-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-cyan-500/20 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed">
+            <i class="fa-solid fa-cloud-arrow-down"></i> Start Turbo Sync
           </button>
         </div>
       </div>
@@ -743,12 +747,18 @@
         if (!selector) return;
 
         const prevVal = currentEventId;
-        selector.innerHTML = '<option value="" class="bg-slate-900 text-slate-200">All Events</option>';
+        selector.innerHTML = '<option value="" class="bg-[#0b1329] text-white">🌐 All Events (Total)</option>';
         events.forEach(ev => {
           const opt = document.createElement('option');
           opt.value = ev.id;
-          opt.className = 'bg-slate-900 text-slate-200';
-          opt.textContent = `${ev.name} (${ev.total_photos || 0} photos)`;
+          opt.dataset.source = ev.source_type || 'gdrive';
+          if (ev.source_type === 'local') {
+            opt.className = 'bg-[#06152d] text-blue-300 font-semibold';
+            opt.textContent = `💻 [LOCAL] ${ev.name} (${ev.photo_count || 0} photos)`;
+          } else {
+            opt.className = 'bg-[#031c19] text-emerald-300 font-semibold';
+            opt.textContent = `☁️ [DRIVE] ${ev.name} (${ev.photo_count || 0} photos)`;
+          }
           selector.appendChild(opt);
         });
 
@@ -756,12 +766,41 @@
           selector.value = prevVal;
           currentEventId = prevVal;
         }
+        await updateStatsForCurrentScope();
       } catch (err) {
         console.error('Failed to load events', err);
       }
     }
 
-    function onEventChanged() {
+    async function updateStatsForCurrentScope() {
+      try {
+        const url = currentEventId ? `/api/stats?event_id=${currentEventId}` : '/api/stats';
+        const res = await fetch(url);
+        const data = await res.json();
+        
+        document.getElementById('statPhotos').textContent = data.total_photos || 0;
+        document.getElementById('statFaces').textContent  = data.total_faces  || 0;
+        document.getElementById('statsBadge').classList.remove('hidden');
+
+        // Update icon based on selected event source
+        const icon = document.getElementById('eventSelectorIcon');
+        const selector = document.getElementById('eventSelector');
+        const selectedOpt = selector ? selector.options[selector.selectedIndex] : null;
+        if (icon) {
+          if (!currentEventId) {
+            icon.className = 'fa-solid fa-layer-group text-blue-400 mr-2 text-xs';
+          } else if (selectedOpt && selectedOpt.dataset.source === 'local') {
+            icon.className = 'fa-solid fa-laptop-code text-cyan-400 mr-2 text-xs';
+          } else {
+            icon.className = 'fa-brands fa-google-drive text-emerald-400 mr-2 text-xs';
+          }
+        }
+      } catch (err) {
+        console.error('Failed to update stats for scope', err);
+      }
+    }
+
+    async function onEventChanged() {
       const selector = document.getElementById('eventSelector');
       currentEventId = selector ? selector.value : '';
       currentSearchResults = [];
@@ -778,6 +817,8 @@
         if (btnResync) btnResync.classList.add('hidden');
         if (btnDelete) btnDelete.classList.add('hidden');
       }
+
+      await updateStatsForCurrentScope();
     }
 
     async function resyncCurrentEvent() {
@@ -789,13 +830,13 @@
       const selector = document.getElementById('eventSelector');
       const eventName = selector.options[selector.selectedIndex]?.text || `Event #${currentEventId}`;
 
-      if (!confirm(`Re-synchronize "${eventName}"?\n\nThis will:\n1. Verify Google Drive permissions\n2. Remove duplicate photos on Drive\n3. Ensure sequential photo_0001.jpg naming\n4. Process and index any new photos`)) {
+      if (!confirm(`Re-synchronize "${eventName}"?\n\nThis will:\n1. Verify Google Drive permissions\n2. Remove duplicate photos on Drive\n3. Ensure sequential photo_0001.jpg naming\n4. Turbo-stream and index new photos into FAISS`)) {
         return;
       }
 
       loader.classList.remove('hidden');
       resultsGrid.classList.add('hidden');
-      loaderText.textContent = `Re-syncing "${eventName}" with Google Drive (Checking permissions, duplicates & auto-renaming)...`;
+      loaderText.textContent = `Turbo re-syncing "${eventName}" with Google Drive...`;
 
       try {
         const res = await fetch(`/api/events/${currentEventId}/resync`, { method: 'POST' });
@@ -805,19 +846,14 @@
 
         if (res.ok) {
           const d = data.data;
-          let summaryMsg = `✨ Event "${d.event_name}" Re-Sync Complete!\n\n`;
+          let summaryMsg = `✨ Event "${d.event_name}" Turbo Sync Complete!\n\n`;
           summaryMsg += `• Duplicates Removed: ${d.duplicates_removed}\n`;
           summaryMsg += `• Files Renamed on Drive: ${d.files_renamed}\n`;
           summaryMsg += `• New Photos Processed: ${d.newly_processed_photos}\n`;
           summaryMsg += `• Already Synced Photos: ${d.skipped_existing_photos}\n`;
-          summaryMsg += `• Total Event Photos: ${d.total_photos}`;
-
-          if (d.duplicates_removed === 0 && d.files_renamed === 0 && d.newly_processed_photos === 0) {
-            summaryMsg += `\n\n✅ Everything is already up-to-date and properly named!`;
-          }
+          summaryMsg += `• Total Photos: ${d.total_photos}`;
 
           alert(summaryMsg);
-          await loadStats();
           await loadEvents();
         } else {
           alert('❌ Re-Sync Failed:\n\n' + (data.detail || 'Unknown error'));
@@ -848,7 +884,6 @@
         if (res.ok) {
           alert(`Event "${eventName}" deleted successfully.`);
           currentEventId = '';
-          await loadStats();
           await loadEvents();
           onEventChanged();
         } else {
@@ -862,13 +897,7 @@
 
     // ── Stats ──────────────────────────────────────────────────────────────
     async function loadStats() {
-      try {
-        const res  = await fetch('/api/stats');
-        const data = await res.json();
-        document.getElementById('statPhotos').textContent = data.total_photos || 0;
-        document.getElementById('statFaces').textContent  = data.total_faces  || 0;
-        document.getElementById('statsBadge').classList.remove('hidden');
-      } catch (err) { console.error('Failed to load stats', err); }
+      await updateStatsForCurrentScope();
     }
 
     // ── Results grid ───────────────────────────────────────────────────────
@@ -879,7 +908,7 @@
           resultStatus.textContent = 'Upload or capture reference photos on the left, then click "Search Person".';
           resultsGrid.innerHTML = `
             <div class="col-span-full py-20 text-center text-slate-500">
-              <div class="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mx-auto mb-4 text-2xl shadow-inner">
+              <div class="w-16 h-16 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-cyan-400 flex items-center justify-center mx-auto mb-4 text-2xl shadow-inner">
                 <i class="fa-solid fa-magnifying-glass"></i>
               </div>
               <h3 class="text-sm font-bold text-slate-300 mb-1">Ready to Search</h3>
@@ -901,11 +930,11 @@
 
       items.forEach(item => {
         const card = document.createElement('div');
-        card.className = 'group relative bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg transition hover:border-indigo-500/50 hover:shadow-indigo-500/10 flex flex-col h-fit';
+        card.className = 'group relative bg-[#0b1329]/90 border border-blue-950 hover:border-cyan-500/60 rounded-xl overflow-hidden shadow-lg transition hover:shadow-cyan-500/10 flex flex-col h-fit';
         const photoId = item.photo_id;
         const photoName = item.numbered_filename || item.filename;
         const isGDrive = item.source_type === 'gdrive';
-        const eventName = item.event_name || (isGDrive ? 'Google Drive' : 'Local Stock Showcase');
+        const eventName = item.event_name || (isGDrive ? 'Google Drive' : 'Local Stock');
 
         let tierBadgeHtml = '';
         if (item.tier) {
@@ -922,11 +951,11 @@
 
         // Source badge showing Event/Folder name
         const sourceBadgeHtml = isGDrive
-          ? `<span class="px-1.5 py-0.5 rounded bg-emerald-950/80 border border-emerald-700/60 text-[9px] text-emerald-300 font-semibold flex items-center gap-1 truncate max-w-[120px]" title="Event: ${eventName}"><i class="fa-brands fa-google-drive"></i> ${eventName}</span>`
-          : `<span class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-[9px] text-slate-300 font-semibold flex items-center gap-1 truncate max-w-[120px]" title="Folder: ${eventName}"><i class="fa-solid fa-folder"></i> ${eventName}</span>`;
+          ? `<span class="px-1.5 py-0.5 rounded bg-emerald-950/80 border border-emerald-700/60 text-[9px] text-emerald-300 font-semibold flex items-center gap-1 truncate max-w-[120px]" title="Drive Event: ${eventName}"><i class="fa-brands fa-google-drive"></i> ${eventName}</span>`
+          : `<span class="px-1.5 py-0.5 rounded bg-blue-950/80 border border-blue-800/60 text-[9px] text-blue-300 font-semibold flex items-center gap-1 truncate max-w-[120px]" title="Local Folder: ${eventName}"><i class="fa-solid fa-folder"></i> ${eventName}</span>`;
 
         card.innerHTML = `
-          <div class="aspect-square bg-slate-950 overflow-hidden relative">
+          <div class="aspect-square bg-[#050a17] overflow-hidden relative">
             <img src="/api/photos/${photoId}" loading="lazy" class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
             ${tierBadgeHtml}
             <div class="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/70 backdrop-blur text-[10px] font-mono text-slate-300 flex items-center gap-1.5 max-w-[calc(100%-16px)]">
@@ -940,8 +969,8 @@
               <p class="text-[10px] text-slate-400 truncate" title="${item.original_filename}">Original: ${item.original_filename}</p>
             </div>
             <div class="mt-2 flex items-center justify-between text-[10px] text-slate-500">
-              <span><i class="fa-solid fa-user text-[9px] mr-1 text-slate-400"></i>${item.face_count || 1} face(s)</span>
-              <a href="/api/photos/${photoId}" target="_blank" class="text-indigo-400 hover:text-indigo-300 font-medium">View Full</a>
+              <span><i class="fa-solid fa-user text-[9px] mr-1 text-blue-400"></i>${item.face_count || 1} face(s)</span>
+              <a href="/api/photos/${photoId}" target="_blank" class="text-cyan-400 hover:text-cyan-300 font-medium">View Full</a>
             </div>
           </div>`;
         resultsGrid.appendChild(card);
@@ -1085,18 +1114,23 @@
 
     // ── Local Indexing ─────────────────────────────────────────────────────
     btnIndex.addEventListener('click', async () => {
-      if (!confirm('Start indexing photos from local stock/ folder? This will safely copy photos with numbered names and extract face embeddings.')) return;
+      if (!confirm('Start indexing photos from local/ folder (e.g. local_recruitment)? This will scan all subfolders, organize events, and extract face embeddings.')) return;
       loader.classList.remove('hidden');
       resultsGrid.classList.add('hidden');
-      loaderText.textContent = 'Scanning local stock folder and generating face embeddings (InsightFace)...';
+      loaderText.textContent = 'Scanning local folders and generating face embeddings (Fast InsightFace)...';
       try {
         const res  = await fetch('/api/index', { method: 'POST' });
         const data = await res.json();
         loader.classList.add('hidden');
         resultsGrid.classList.remove('hidden');
         if (res.ok) {
-          alert(`Local Indexing completed!\nNew: ${data.data.newly_processed_photos} photos, ${data.data.newly_detected_faces} faces.\nTotal photos in system: ${data.data.total_photos}`);
-          await loadStats();
+          const d = data.data;
+          let msg = `✨ Local Indexing completed!\n\n`;
+          msg += `• Folders Processed: ${(d.events_processed || []).join(', ') || 'Local'}\n`;
+          msg += `• New Photos: ${d.newly_processed_photos}\n`;
+          msg += `• New Faces: ${d.newly_detected_faces}\n`;
+          msg += `• Total Photos: ${d.total_photos}`;
+          alert(msg);
           await loadEvents();
         } else {
           alert('Indexing failed: ' + (data.detail || 'Unknown error'));

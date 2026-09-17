@@ -20,13 +20,16 @@ env/
 data/processed_photos/
 data/faces.index
 data/metadata.sqlite
+data/gdrive_downloads/
 
 # Keep the data folder itself tracked (for structure)
 !data/.gitkeep
 
-# Stock photos — your private photos, don't push to public repo
+# Photos — your private photos, don't push to repo
 stock/
 !stock/.gitkeep
+local/
+!local/.gitkeep
 
 # OS
 .DS_Store

@@ -208,20 +208,30 @@ class GDriveService:
 
         return results
 
-    def get_photo_bytes(self, file_id: str) -> bytes:
+    def get_photo_bytes(self, file_id: str, max_retries: int = 3) -> bytes:
         """
-        Streams image file directly into memory (RAM) without saving to disk.
+        Streams image file directly into memory (RAM) without saving to disk,
+        with retry backoff for network stability.
         """
         if not self.authenticate():
             raise RuntimeError("Google Drive is not authenticated.")
 
-        request = self.service.files().get_media(fileId=file_id)
-        fh = io.BytesIO()
-        downloader = MediaIoBaseDownload(fh, request)
-        done = False
-        while not done:
-            status, done = downloader.next_chunk()
-        return fh.getvalue()
+        import time
+        last_err = None
+        for attempt in range(max_retries):
+            try:
+                request = self.service.files().get_media(fileId=file_id)
+                fh = io.BytesIO()
+                # 1MB chunk size is fast and resilient against transient drops
+                downloader = MediaIoBaseDownload(fh, request, chunksize=1024 * 1024)
+                done = False
+                while not done:
+                    status, done = downloader.next_chunk()
+                return fh.getvalue()
+            except Exception as e:
+                last_err = e
+                time.sleep(0.5 * (attempt + 1))
+        raise last_err
 
     def rename_file(self, file_id: str, new_name: str) -> Dict[str, Any]:
         """

@@ -3,7 +3,8 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Input directory (Strictly READ-ONLY - stock photos are preserved untouched)
+# Input directories
+LOCAL_DIR = BASE_DIR / "local"
 STOCK_DIR = BASE_DIR / "stock"
 
 # Output data directories

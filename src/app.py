@@ -96,8 +96,8 @@ def api_resync_event(event_id: int):
 
 
 @app.get("/api/stats")
-def api_stats():
-    stats = get_stats()
+def api_stats(event_id: Optional[int] = None):
+    stats = get_stats(event_id=event_id)
     stats["faiss_vectors"] = searcher.index.ntotal if searcher.index else 0
     return stats
 

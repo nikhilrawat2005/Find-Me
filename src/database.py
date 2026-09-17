@@ -228,9 +228,30 @@ def get_faces_by_vector_indices(vector_indices: List[int], event_id: Optional[in
     conn.close()
     return [dict(r) for r in rows]
 
-def get_stats() -> Dict[str, Any]:
+def get_stats(event_id: Optional[int] = None) -> Dict[str, Any]:
     conn = get_connection()
     cursor = conn.cursor()
+    
+    if event_id is not None:
+        cursor.execute("SELECT COUNT(*) FROM photos WHERE event_id = ?", (event_id,))
+        total_photos = cursor.fetchone()[0]
+        cursor.execute("""
+            SELECT COUNT(f.id) FROM faces f
+            JOIN photos p ON f.photo_id = p.id
+            WHERE p.event_id = ?
+        """, (event_id,))
+        total_faces = cursor.fetchone()[0]
+        cursor.execute("SELECT source_type FROM events WHERE id = ?", (event_id,))
+        ev_row = cursor.fetchone()
+        source_type = ev_row[0] if ev_row else "unknown"
+        conn.close()
+        return {
+            "event_id": event_id,
+            "total_photos": total_photos,
+            "total_faces": total_faces,
+            "source_type": source_type
+        }
+
     cursor.execute("SELECT COUNT(*) FROM photos")
     total_photos = cursor.fetchone()[0]
     cursor.execute("SELECT COUNT(*) FROM faces")
