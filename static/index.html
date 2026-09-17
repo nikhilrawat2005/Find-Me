@@ -430,8 +430,24 @@
           </label>
           <input type="text" id="gdriveFolderInput" placeholder="https://drive.google.com/drive/folders/1abc... or 1abc..."
             class="w-full px-3.5 py-2.5 rounded-xl bg-[#050a17] border border-blue-900/60 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 text-xs font-mono">
-          <p class="text-[11px] text-slate-400 leading-relaxed">
-            Folder ko Service Account email ke saath share karein (Editor permission zaroori hai).
+        </div>
+
+        <!-- Service Account Email Quick Copy Box -->
+        <div class="p-3 rounded-xl bg-[#061126]/90 border border-cyan-500/30 shadow-[0_0_15px_rgba(0,180,255,0.08)] space-y-1.5">
+          <div class="flex items-center justify-between text-[11px]">
+            <span class="font-bold text-cyan-300 flex items-center gap-1.5">
+              <i class="fa-solid fa-share-nodes text-cyan-400"></i> Share with Service Account (Editor):
+            </span>
+            <button id="btnCopyServiceEmail" onclick="copyServiceAccountEmail()" class="px-2 py-0.5 rounded bg-blue-600/30 hover:bg-blue-600/50 border border-cyan-500/40 text-cyan-300 font-mono text-[10px] font-semibold flex items-center gap-1 transition active:scale-95">
+              <i class="fa-regular fa-copy"></i>
+              <span id="copyBtnText">Copy Email</span>
+            </button>
+          </div>
+          <div class="flex items-center justify-between bg-[#02050c] border border-blue-950 rounded-lg px-2.5 py-1.5 font-mono text-[11px] text-slate-200 select-all overflow-x-auto">
+            <span id="serviceAccountEmailText" class="truncate">findme-drive-bot@findme-app-508806.iam.gserviceaccount.com</span>
+          </div>
+          <p class="text-[10px] text-slate-400 leading-tight">
+            Google Drive folder me jakar <strong class="text-slate-200">Share</strong> par click karein aur is email ko <strong class="text-cyan-400">Editor</strong> access ke sath add karein.
           </p>
         </div>
 
@@ -1373,6 +1389,11 @@
           gdriveAuthBadge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-900/60 border border-emerald-700/60 text-emerald-300';
           gdriveAuthBadge.classList.remove('hidden');
           btnStartGDriveSync.disabled = false;
+
+          // Dynamically update copy text if account email returned
+          if (data.account_email && document.getElementById('serviceAccountEmailText')) {
+            document.getElementById('serviceAccountEmailText').textContent = data.account_email;
+          }
         } else {
           gdriveStatusIcon.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-amber-400"></i>';
           gdriveStatusTitle.textContent = 'credentials.json Not Configured Yet';
@@ -1385,6 +1406,32 @@
         gdriveStatusDesc.textContent = err.message;
         btnStartGDriveSync.disabled = true;
       }
+    }
+
+    // ── Copy Service Account Email ─────────────────────────────────────────
+    function copyServiceAccountEmail() {
+      const emailEl = document.getElementById('serviceAccountEmailText');
+      const btnText = document.getElementById('copyBtnText');
+      const email = emailEl ? emailEl.textContent.trim() : 'findme-drive-bot@findme-app-508806.iam.gserviceaccount.com';
+
+      navigator.clipboard.writeText(email).then(() => {
+        if (btnText) {
+          btnText.textContent = 'Copied!';
+          setTimeout(() => { btnText.textContent = 'Copy Email'; }, 2000);
+        }
+      }).catch(err => {
+        // Fallback for older browsers
+        const textarea = document.createElement('textarea');
+        textarea.value = email;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        if (btnText) {
+          btnText.textContent = 'Copied!';
+          setTimeout(() => { btnText.textContent = 'Copy Email'; }, 2000);
+        }
+      });
     }
 
     async function startGDriveSync() {
