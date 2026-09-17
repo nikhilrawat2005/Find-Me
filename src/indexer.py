@@ -225,24 +225,28 @@ class StockIndexer:
                 "faiss_total_vectors": self.index.ntotal
             }
 
-        # Multi-threaded download pipeline
-        prefetch_queue = queue.Queue(maxsize=16)
+        # Multi-threaded download pipeline (using 4 parallel workers with thread-isolated Drive clients)
+        prefetch_queue = queue.Queue(maxsize=12)
         stop_token = object()
 
         def download_worker():
-            with ThreadPoolExecutor(max_workers=5) as pool:
-                def fetch_task(file_meta):
-                    gid = file_meta["id"]
-                    try:
-                        raw_bytes = self.gdrive_service.get_photo_bytes(gid)
-                        return (file_meta, raw_bytes, None)
-                    except Exception as err:
-                        return (file_meta, None, err)
+            try:
+                with ThreadPoolExecutor(max_workers=4) as pool:
+                    def fetch_task(file_meta):
+                        gid = file_meta["id"]
+                        try:
+                            raw_bytes = self.gdrive_service.get_photo_bytes(gid)
+                            return (file_meta, raw_bytes, None)
+                        except Exception as err:
+                            return (file_meta, None, err)
 
-                futures = [pool.submit(fetch_task, f_meta) for f_meta in to_process]
-                for fut in as_completed(futures):
-                    prefetch_queue.put(fut.result())
-            prefetch_queue.put(stop_token)
+                    futures = [pool.submit(fetch_task, f_meta) for f_meta in to_process]
+                    for fut in as_completed(futures):
+                        prefetch_queue.put(fut.result())
+            except Exception as e:
+                print(f"[Worker Error] Prefetch pool error: {e}")
+            finally:
+                prefetch_queue.put(stop_token)
 
         downloader_thread = threading.Thread(target=download_worker, daemon=True)
         downloader_thread.start()

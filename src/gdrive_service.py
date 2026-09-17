@@ -1,6 +1,7 @@
 import io
 import os
 import re
+import threading
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from googleapiclient.discovery import build
@@ -26,9 +27,26 @@ SUPPORTED_MIME_TYPES = {
 class GDriveService:
     def __init__(self, credentials_path: Optional[Path] = None):
         self.credentials_path = credentials_path or GDRIVE_CREDENTIALS_PATH
-        self.service = None
         self.auth_type = None
         self.account_email = None
+        self._creds = None
+        self._thread_local = threading.local()
+
+    def get_service(self):
+        """
+        Returns a thread-local Google Drive service instance so concurrent threads
+        never share the same underlying SSL socket / httplib2 connection.
+        """
+        if not hasattr(self._thread_local, "service") or self._thread_local.service is None:
+            if not self.authenticate():
+                raise RuntimeError("Google Drive credentials not authenticated.")
+            # Build independent thread-safe client per worker thread
+            self._thread_local.service = build('drive', 'v3', credentials=self._creds, cache_discovery=False)
+        return self._thread_local.service
+
+    @property
+    def service(self):
+        return self.get_service()
 
     def authenticate(self) -> bool:
         """
@@ -36,7 +54,7 @@ class GDriveService:
         1. Service Account JSON file (recommended for permanent single-account integration)
         2. OAuth token / client credentials
         """
-        if self.service is not None:
+        if self._creds is not None:
             return True
 
         # Check for service account / credentials file
@@ -59,7 +77,7 @@ class GDriveService:
             creds = service_account.Credentials.from_service_account_file(
                 str(self.credentials_path), scopes=SCOPES
             )
-            self.service = build('drive', 'v3', credentials=creds)
+            self._creds = creds
             self.auth_type = "service_account"
             self.account_email = creds.service_account_email
             return True
@@ -81,7 +99,7 @@ class GDriveService:
                     with open(str(GDRIVE_TOKEN_PATH), 'w') as token_file:
                         token_file.write(creds.to_json())
 
-                self.service = build('drive', 'v3', credentials=creds)
+                self._creds = creds
                 self.auth_type = "oauth"
                 return True
             except Exception as oauth_err:
