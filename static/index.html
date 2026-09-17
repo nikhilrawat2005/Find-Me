@@ -27,13 +27,25 @@
       </div>
     </div>
     <div class="flex items-center space-x-3">
-      <!-- Active Event Selector -->
-      <div class="flex items-center bg-slate-800/90 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs shadow-inner">
-        <i class="fa-solid fa-calendar-days text-indigo-400 mr-2"></i>
-        <span class="text-slate-400 mr-1.5 hidden sm:inline">Event:</span>
-        <select id="eventSelector" onchange="onEventChanged()" class="bg-transparent text-slate-100 font-semibold focus:outline-none cursor-pointer text-xs pr-1">
-          <option value="" class="bg-slate-900 text-slate-200">All Events</option>
-        </select>
+      <!-- Active Event Selector & Management -->
+      <div class="flex items-center space-x-1.5 bg-slate-800/90 border border-slate-700/80 rounded-lg p-1 text-xs shadow-inner">
+        <div class="flex items-center px-1.5 py-0.5">
+          <i class="fa-solid fa-calendar-days text-indigo-400 mr-2"></i>
+          <span class="text-slate-400 mr-1.5 hidden sm:inline">Event:</span>
+          <select id="eventSelector" onchange="onEventChanged()" class="bg-transparent text-slate-100 font-semibold focus:outline-none cursor-pointer text-xs pr-1 max-w-[140px] sm:max-w-[200px] truncate">
+            <option value="" class="bg-slate-900 text-slate-200">All Events</option>
+          </select>
+        </div>
+
+        <!-- Event Re-Sync Button -->
+        <button id="btnResyncEvent" onclick="resyncCurrentEvent()" title="Re-sync selected event (Checks permissions, deletes dupes, renames & indexes)" class="hidden p-1.5 hover:bg-slate-700 text-emerald-400 hover:text-emerald-300 rounded-md transition" >
+          <i class="fa-solid fa-rotate"></i>
+        </button>
+
+        <!-- Event Delete Button -->
+        <button id="btnDeleteEvent" onclick="deleteCurrentEvent()" title="Delete selected event and its indexed data" class="hidden p-1.5 hover:bg-red-950/60 text-red-400 hover:text-red-300 rounded-md transition" >
+          <i class="fa-solid fa-trash-can"></i>
+        </button>
       </div>
 
       <div id="statsBadge" class="hidden md:flex items-center space-x-3 bg-slate-800/80 border border-slate-700/60 px-3 py-1.5 rounded-full text-xs text-slate-300">
@@ -221,19 +233,12 @@
       <div class="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 class="text-lg font-bold text-white flex items-center">
-            <i class="fa-solid fa-list-check text-purple-400 mr-2.5"></i> Search Results
+            <i class="fa-solid fa-bullseye text-indigo-400 mr-2.5"></i> Matched Output Photos
           </h2>
-          <p id="resultStatus" class="text-xs text-slate-400 mt-0.5">Showing all indexed photos. Upload or capture reference photos to search.</p>
+          <p id="resultStatus" class="text-xs text-slate-400 mt-0.5">Upload or capture reference photos on the left, then click "Search Person".</p>
         </div>
 
         <div class="flex items-center gap-3 flex-wrap">
-          <!-- Source Filter (All / Local / GDrive) -->
-          <div id="sourceFilterGroup" class="flex bg-slate-900 border border-slate-800 rounded-lg p-0.5 text-[11px] font-medium">
-            <button onclick="filterBySource('')" id="filterAll" class="px-2.5 py-1 rounded-md bg-indigo-600 text-white font-semibold transition">All</button>
-            <button onclick="filterBySource('local')" id="filterLocal" class="px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition">Local Stock</button>
-            <button onclick="filterBySource('gdrive')" id="filterGDrive" class="px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition">Google Drive</button>
-          </div>
-
           <!-- Tier Summary Badges & Action Buttons -->
           <div id="tierSummary" class="hidden flex flex-wrap items-center gap-2">
             <span id="badgeStrong" class="hidden items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-900/60 border border-emerald-700/50 text-emerald-300">
@@ -723,169 +728,137 @@
       renderPreviews();
     };
 
-    // ── Stats ──────────────────────────────────────────────────────────────
-    async function loadStats() {
-      try {
-        const res  = await fetch('/api/stats');
-        const data = await res.json();
-        document.getElementById('statPhotos').textContent = data.total_photos || 0;
-        document.getElementById('statFaces').textContent  = data.total_faces  || 0;
-        document.getElementById('statsBadge').classList.remove('hidden');
-      } catch (err) { console.error('Failed to load stats', err); }
-    }
-
-    async function loadAllPhotos() {
-      try {
-        const res    = await fetch('/api/photos?limit=60');
-        const photos = await res.json();
-        renderPhotoGrid(photos, false);
-      } catch (err) { console.error('Failed to load photos', err); }
-    }
-
-    // ── Results grid ───────────────────────────────────────────────────────
-    function renderPhotoGrid(items, isSearchResult = false) {
-      resultsGrid.innerHTML = '';
-      if (!items || items.length === 0) {
-        resultsGrid.innerHTML = `
-          <div class="col-span-full py-16 text-center text-slate-500">
-            <i class="fa-regular fa-folder-open text-4xl mb-3 block"></i>
-            No photos found. Run "Scan &amp; Index Stock" to index existing stock photos.
-          </div>`;
-        return;
-      }
-      items.forEach(item => {
-        const card = document.createElement('div');
-        card.className = 'group relative bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg transition hover:border-indigo-500/50 hover:shadow-indigo-500/10 flex flex-col h-fit';
-        const photoName = item.numbered_filename || item.filename;
-        let tierBadgeHtml = '';
-        if (isSearchResult && item.tier) {
-          const s = TIER_STYLES[item.tier] || TIER_STYLES.possible;
-          tierBadgeHtml = `
-            <div class="absolute top-2 right-2 flex items-center gap-1 px-2 py-0.5 rounded ${s.bg} backdrop-blur text-[11px] font-bold ${s.text} shadow">
-              <span class="w-1.5 h-1.5 rounded-full ${s.dot} inline-block"></span>
-              ${item.percentage}%
-            </div>
-            <div class="absolute top-8 right-2 px-1.5 py-0.5 rounded ${s.bg} backdrop-blur text-[9px] font-semibold ${s.text} opacity-90">
-              ${item.tier_label}
-            </div>`;
-        }
-        card.innerHTML = `
-          <div class="aspect-square bg-slate-950 overflow-hidden relative">
-            <img src="/api/photos/${photoName}" loading="lazy" class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
-            ${tierBadgeHtml}
-            <div class="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/70 backdrop-blur text-[10px] font-mono text-slate-300">
-              #${item.photo_number || item.id}
-            </div>
-          </div>
-          <div class="p-2.5 flex-1 flex flex-col justify-between">
-            <div>
-              <p class="text-xs font-semibold text-slate-200 truncate">${item.numbered_filename}</p>
-              <p class="text-[10px] text-slate-400 truncate">Original: ${item.original_filename}</p>
-            </div>
-            <div class="mt-2 flex items-center justify-between text-[10px] text-slate-500">
-              <span><i class="fa-solid fa-user text-[9px] mr-1 text-slate-400"></i>${item.face_count || 1} face(s)</span>
-              <a href="/api/photos/${photoName}" target="_blank" class="text-indigo-400 hover:text-indigo-300 font-medium">View</a>
-            </div>
-          </div>`;
-        resultsGrid.appendChild(card);
-      });
-    }
-
-    // ── Search ─────────────────────────────────────────────────────────────
-    btnSearch.addEventListener('click', async () => {
-      if (selectedFiles.length === 0) {
-        alert('Please upload or capture at least 1 reference photo first.');
-        return;
-      }
-
-      // Stop camera automatically when search starts
-      stopCamera();
-
-      loader.classList.remove('hidden');
-      resultsGrid.classList.add('hidden');
-      tierSummary.classList.add('hidden');
-      loaderText.textContent = 'Running 3-level face search...';
-
-      const formData = new FormData();
-      selectedFiles.forEach(f => formData.append('files', f));
-
-      try {
-        const res  = await fetch('/api/search?top_k=100', { method: 'POST', body: formData });
-        const data = await res.json();
-        loader.classList.add('hidden');
-        resultsGrid.classList.remove('hidden');
-
-        if (!res.ok) { alert(data.detail || 'Search failed.'); return; }
-
-        const tc = data.tier_counts || {};
-        tierSummary.classList.remove('hidden');
-        const showBadge = (id, countId, count) => {
-          const el = document.getElementById(id);
-          document.getElementById(countId).textContent = count;
-          if (count > 0) el.classList.remove('hidden'), el.classList.add('flex');
-          else el.classList.add('hidden');
-        };
-        showBadge('badgeStrong',   'countStrong',   tc.strong   || 0);
-        showBadge('badgeLikely',   'countLikely',   tc.likely   || 0);
-        showBadge('badgePossible', 'countPossible', tc.possible || 0);
-
-        const total = data.total_matches || 0;
-        resultStatus.textContent = total > 0
-          ? `Found ${total} matching photo${total !== 1 ? 's' : ''} across all confidence levels.`
-          : 'No matches found. Try a different or clearer reference photo.';
-
-        renderPhotoGrid(data.results, true);
-      } catch (err) {
-        loader.classList.add('hidden');
-        resultsGrid.classList.remove('hidden');
-        alert('An error occurred while searching: ' + err.message);
-      }
-    });
-
-    // ── Indexing ───────────────────────────────────────────────────────────
-    btnIndex.addEventListener('click', async () => {
-      if (!confirm('Start indexing photos from stock folder? This will safely copy photos with numbered names and extract face embeddings.')) return;
-      loader.classList.remove('hidden');
-      resultsGrid.classList.add('hidden');
-      loaderText.textContent = 'Scanning stock folder and generating face embeddings (InsightFace)...';
-      try {
-        const res  = await fetch('/api/index', { method: 'POST' });
-        const data = await res.json();
-        loader.classList.add('hidden');
-        resultsGrid.classList.remove('hidden');
-        if (res.ok) {
-          alert(`Indexing completed!\nNew: ${data.data.newly_processed_photos} photos, ${data.data.newly_detected_faces} faces.\nTotal: ${data.data.total_photos} photos.`);
-          await loadStats();
-          await loadAllPhotos();
-        } else {
-          alert('Indexing failed: ' + (data.detail || 'Unknown error'));
-        }
-      } catch (err) {
-        loader.classList.add('hidden');
-        resultsGrid.classList.remove('hidden');
-        alert('Error during indexing: ' + err.message);
-      }
-    });
-
-    // ── Source Filtering State ─────────────────────────────────────────────
+    // ── Event & Source Filtering State ─────────────────────────────────────
+    let currentEventId = '';      // Active event ID filter ('', or integer ID)
     let currentSourceFilter = ''; // '' (all), 'local', 'gdrive'
     let currentAllPhotos = [];    // Cached photos when browsing gallery
 
-    function filterBySource(source) {
-      currentSourceFilter = source;
-      ['filterAll', 'filterLocal', 'filterGDrive'].forEach(id => {
-        const btn = document.getElementById(id);
-        btn.className = 'px-2.5 py-1 rounded-md text-slate-400 hover:text-slate-200 transition';
-      });
-      if (!source) {
-        document.getElementById('filterAll').className = 'px-2.5 py-1 rounded-md bg-indigo-600 text-white font-semibold transition';
-      } else if (source === 'local') {
-        document.getElementById('filterLocal').className = 'px-2.5 py-1 rounded-md bg-indigo-600 text-white font-semibold transition';
-      } else if (source === 'gdrive') {
-        document.getElementById('filterGDrive').className = 'px-2.5 py-1 rounded-md bg-emerald-600 text-white font-semibold transition';
+    // ── Load Events List into Header Dropdown ──────────────────────────────
+    async function loadEvents() {
+      try {
+        const res = await fetch('/api/events');
+        if (!res.ok) return;
+        const events = await res.json();
+        const selector = document.getElementById('eventSelector');
+        if (!selector) return;
+
+        const prevVal = currentEventId;
+        selector.innerHTML = '<option value="" class="bg-slate-900 text-slate-200">All Events</option>';
+        events.forEach(ev => {
+          const opt = document.createElement('option');
+          opt.value = ev.id;
+          opt.className = 'bg-slate-900 text-slate-200';
+          opt.textContent = `${ev.name} (${ev.total_photos || 0} photos)`;
+          selector.appendChild(opt);
+        });
+
+        if (prevVal) {
+          selector.value = prevVal;
+          currentEventId = prevVal;
+        }
+      } catch (err) {
+        console.error('Failed to load events', err);
       }
-      loadAllPhotos();
     }
+
+    function onEventChanged() {
+      const selector = document.getElementById('eventSelector');
+      currentEventId = selector ? selector.value : '';
+      currentSearchResults = [];
+      const tierSummary = document.getElementById('tierSummary');
+      if (tierSummary) tierSummary.classList.add('hidden');
+      renderPhotoGrid([], false);
+
+      const btnResync = document.getElementById('btnResyncEvent');
+      const btnDelete = document.getElementById('btnDeleteEvent');
+      if (currentEventId) {
+        if (btnResync) btnResync.classList.remove('hidden');
+        if (btnDelete) btnDelete.classList.remove('hidden');
+      } else {
+        if (btnResync) btnResync.classList.add('hidden');
+        if (btnDelete) btnDelete.classList.add('hidden');
+      }
+    }
+
+    async function resyncCurrentEvent() {
+      if (!currentEventId) {
+        alert('Please select an event to re-sync.');
+        return;
+      }
+
+      const selector = document.getElementById('eventSelector');
+      const eventName = selector.options[selector.selectedIndex]?.text || `Event #${currentEventId}`;
+
+      if (!confirm(`Re-synchronize "${eventName}"?\n\nThis will:\n1. Verify Google Drive permissions\n2. Remove duplicate photos on Drive\n3. Ensure sequential photo_0001.jpg naming\n4. Process and index any new photos`)) {
+        return;
+      }
+
+      loader.classList.remove('hidden');
+      resultsGrid.classList.add('hidden');
+      loaderText.textContent = `Re-syncing "${eventName}" with Google Drive (Checking permissions, duplicates & auto-renaming)...`;
+
+      try {
+        const res = await fetch(`/api/events/${currentEventId}/resync`, { method: 'POST' });
+        const data = await res.json();
+        loader.classList.add('hidden');
+        resultsGrid.classList.remove('hidden');
+
+        if (res.ok) {
+          const d = data.data;
+          let summaryMsg = `✨ Event "${d.event_name}" Re-Sync Complete!\n\n`;
+          summaryMsg += `• Duplicates Removed: ${d.duplicates_removed}\n`;
+          summaryMsg += `• Files Renamed on Drive: ${d.files_renamed}\n`;
+          summaryMsg += `• New Photos Processed: ${d.newly_processed_photos}\n`;
+          summaryMsg += `• Already Synced Photos: ${d.skipped_existing_photos}\n`;
+          summaryMsg += `• Total Event Photos: ${d.total_photos}`;
+
+          if (d.duplicates_removed === 0 && d.files_renamed === 0 && d.newly_processed_photos === 0) {
+            summaryMsg += `\n\n✅ Everything is already up-to-date and properly named!`;
+          }
+
+          alert(summaryMsg);
+          await loadStats();
+          await loadEvents();
+        } else {
+          alert('❌ Re-Sync Failed:\n\n' + (data.detail || 'Unknown error'));
+        }
+      } catch (err) {
+        loader.classList.add('hidden');
+        resultsGrid.classList.remove('hidden');
+        alert('Network error during Re-Sync: ' + err.message);
+      }
+    }
+
+    async function deleteCurrentEvent() {
+      if (!currentEventId) {
+        alert('Please select an event to delete.');
+        return;
+      }
+
+      const selector = document.getElementById('eventSelector');
+      const eventName = selector.options[selector.selectedIndex]?.text || `Event #${currentEventId}`;
+
+      if (!confirm(`⚠️ Are you sure you want to delete "${eventName}"?\n\nThis will remove the event and all its indexed photos and face data from the system database. (Your actual Google Drive files will not be deleted).`)) {
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/events/${currentEventId}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (res.ok) {
+          alert(`Event "${eventName}" deleted successfully.`);
+          currentEventId = '';
+          await loadStats();
+          await loadEvents();
+          onEventChanged();
+        } else {
+          alert('Failed to delete event: ' + (data.detail || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('Error deleting event: ' + err.message);
+      }
+    }
+
 
     // ── Stats ──────────────────────────────────────────────────────────────
     async function loadStats() {
@@ -898,36 +871,44 @@
       } catch (err) { console.error('Failed to load stats', err); }
     }
 
-    async function loadAllPhotos() {
-      try {
-        const url = currentSourceFilter ? `/api/photos?limit=80&source=${currentSourceFilter}` : '/api/photos?limit=80';
-        const res    = await fetch(url);
-        const photos = await res.json();
-        currentAllPhotos = photos;
-        renderPhotoGrid(photos, false);
-      } catch (err) { console.error('Failed to load photos', err); }
-    }
-
     // ── Results grid ───────────────────────────────────────────────────────
     function renderPhotoGrid(items, isSearchResult = false) {
       resultsGrid.innerHTML = '';
-      if (!items || items.length === 0) {
-        const filterName = currentSourceFilter === 'local' ? 'Local Stock' : (currentSourceFilter === 'gdrive' ? 'Google Drive' : 'any');
-        resultsGrid.innerHTML = `
-          <div class="col-span-full py-16 text-center text-slate-500">
-            <i class="fa-regular fa-folder-open text-4xl mb-3 block"></i>
-            No photos found for ${filterName} source.
-          </div>`;
+      if (!isSearchResult || !items || items.length === 0) {
+        if (!isSearchResult) {
+          resultStatus.textContent = 'Upload or capture reference photos on the left, then click "Search Person".';
+          resultsGrid.innerHTML = `
+            <div class="col-span-full py-20 text-center text-slate-500">
+              <div class="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mx-auto mb-4 text-2xl shadow-inner">
+                <i class="fa-solid fa-magnifying-glass"></i>
+              </div>
+              <h3 class="text-sm font-bold text-slate-300 mb-1">Ready to Search</h3>
+              <p class="text-xs text-slate-500 max-w-sm mx-auto">Upload or take a photo of the person you are looking for. Matched photos will appear here.</p>
+            </div>`;
+        } else {
+          resultStatus.textContent = 'No matches found. Try a different or clearer reference photo.';
+          resultsGrid.innerHTML = `
+            <div class="col-span-full py-20 text-center text-slate-500">
+              <div class="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto mb-4 text-2xl">
+                <i class="fa-regular fa-face-frown"></i>
+              </div>
+              <h3 class="text-sm font-bold text-slate-300 mb-1">No Matching Faces Found</h3>
+              <p class="text-xs text-slate-500 max-w-sm mx-auto">We could not find any face matching the reference photo in the selected event.</p>
+            </div>`;
+        }
         return;
       }
+
       items.forEach(item => {
         const card = document.createElement('div');
         card.className = 'group relative bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg transition hover:border-indigo-500/50 hover:shadow-indigo-500/10 flex flex-col h-fit';
+        const photoId = item.photo_id;
         const photoName = item.numbered_filename || item.filename;
         const isGDrive = item.source_type === 'gdrive';
+        const eventName = item.event_name || (isGDrive ? 'Google Drive' : 'Local Stock Showcase');
 
         let tierBadgeHtml = '';
-        if (isSearchResult && item.tier) {
+        if (item.tier) {
           const s = TIER_STYLES[item.tier] || TIER_STYLES.possible;
           tierBadgeHtml = `
             <div class="absolute top-2 right-2 flex items-center gap-1 px-2 py-0.5 rounded ${s.bg} backdrop-blur text-[11px] font-bold ${s.text} shadow">
@@ -939,17 +920,17 @@
             </div>`;
         }
 
-        // Source badge (Local vs GDrive)
+        // Source badge showing Event/Folder name
         const sourceBadgeHtml = isGDrive
-          ? `<span class="px-1.5 py-0.5 rounded bg-emerald-950/80 border border-emerald-700/60 text-[9px] text-emerald-300 font-semibold flex items-center gap-1"><i class="fa-brands fa-google-drive"></i> Drive</span>`
-          : `<span class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-[9px] text-slate-300 font-semibold flex items-center gap-1"><i class="fa-solid fa-hard-drive"></i> Local</span>`;
+          ? `<span class="px-1.5 py-0.5 rounded bg-emerald-950/80 border border-emerald-700/60 text-[9px] text-emerald-300 font-semibold flex items-center gap-1 truncate max-w-[120px]" title="Event: ${eventName}"><i class="fa-brands fa-google-drive"></i> ${eventName}</span>`
+          : `<span class="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-[9px] text-slate-300 font-semibold flex items-center gap-1 truncate max-w-[120px]" title="Folder: ${eventName}"><i class="fa-solid fa-folder"></i> ${eventName}</span>`;
 
         card.innerHTML = `
           <div class="aspect-square bg-slate-950 overflow-hidden relative">
-            <img src="/api/photos/${photoName}" loading="lazy" class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
+            <img src="/api/photos/${photoId}" loading="lazy" class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
             ${tierBadgeHtml}
-            <div class="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/70 backdrop-blur text-[10px] font-mono text-slate-300 flex items-center gap-1.5">
-              <span>#${item.photo_number || item.id}</span>
+            <div class="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-black/70 backdrop-blur text-[10px] font-mono text-slate-300 flex items-center gap-1.5 max-w-[calc(100%-16px)]">
+              <span>#${item.photo_number || item.photo_id}</span>
               ${sourceBadgeHtml}
             </div>
           </div>
@@ -960,7 +941,7 @@
             </div>
             <div class="mt-2 flex items-center justify-between text-[10px] text-slate-500">
               <span><i class="fa-solid fa-user text-[9px] mr-1 text-slate-400"></i>${item.face_count || 1} face(s)</span>
-              <a href="/api/photos/${photoName}" target="_blank" class="text-indigo-400 hover:text-indigo-300 font-medium">View</a>
+              <a href="/api/photos/${photoId}" target="_blank" class="text-indigo-400 hover:text-indigo-300 font-medium">View Full</a>
             </div>
           </div>`;
         resultsGrid.appendChild(card);
@@ -1116,7 +1097,7 @@
         if (res.ok) {
           alert(`Local Indexing completed!\nNew: ${data.data.newly_processed_photos} photos, ${data.data.newly_detected_faces} faces.\nTotal photos in system: ${data.data.total_photos}`);
           await loadStats();
-          await loadAllPhotos();
+          await loadEvents();
         } else {
           alert('Indexing failed: ' + (data.detail || 'Unknown error'));
         }
@@ -1218,7 +1199,6 @@
           // Auto-select newly synced event
           currentEventId = d.event_id;
           document.getElementById('eventSelector').value = currentEventId;
-          await loadAllPhotos();
         } else {
           alert('Event Sync Failed:\n' + (data.detail || 'Unknown error'));
         }
@@ -1299,7 +1279,7 @@
     // ── Init ───────────────────────────────────────────────────────────────
     loadStats();
     loadEvents();
-    loadAllPhotos();
+    renderPhotoGrid([], false);
   </script>
 </body>
 </html>

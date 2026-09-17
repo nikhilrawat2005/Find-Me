@@ -103,6 +103,14 @@ def get_photo_by_gdrive_id(gdrive_file_id: str) -> Optional[Dict[str, Any]]:
     conn.close()
     return dict(row) if row else None
 
+def get_photo_by_id(photo_id: int) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM photos WHERE id = ?", (photo_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
 def get_photo_by_filename(filename: str) -> Optional[Dict[str, Any]]:
     conn = get_connection()
     cursor = conn.cursor()
@@ -208,9 +216,11 @@ def get_faces_by_vector_indices(vector_indices: List[int], event_id: Optional[in
         params.append(event_id)
 
     query = f"""
-        SELECT f.*, p.photo_number, p.numbered_filename, p.original_filename, p.stored_path, p.face_count, p.source_type, p.gdrive_file_id, p.event_id
+        SELECT f.*, p.photo_number, p.numbered_filename, p.original_filename, p.stored_path, p.face_count, p.source_type, p.gdrive_file_id, p.event_id,
+               COALESCE(e.name, 'Local Stock Showcase') as event_name
         FROM faces f
         JOIN photos p ON f.photo_id = p.id
+        LEFT JOIN events e ON p.event_id = e.id
         WHERE f.vector_index IN ({placeholders}) {event_clause}
     """
     cursor.execute(query, params)
@@ -259,5 +269,19 @@ def get_all_photos(limit: int = 200, offset: int = 0, source_type: Optional[str]
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+def delete_event(event_id: int) -> bool:
+    """
+    Deletes an event and its associated photos and faces.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM faces WHERE photo_id IN (SELECT id FROM photos WHERE event_id = ?)", (event_id,))
+    cursor.execute("DELETE FROM photos WHERE event_id = ?", (event_id,))
+    cursor.execute("DELETE FROM events WHERE id = ?", (event_id,))
+    conn.commit()
+    conn.close()
+    return True
+
 
 

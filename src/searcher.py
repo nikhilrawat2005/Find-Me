@@ -117,6 +117,8 @@ class FaceSearcher:
                     "face_count":        face_info["face_count"],
                     "source_type":       face_info.get("source_type", "local"),
                     "gdrive_file_id":    face_info.get("gdrive_file_id"),
+                    "event_id":          face_info.get("event_id"),
+                    "event_name":        face_info.get("event_name", "Local Stock Showcase"),
                     "similarity_score":  round(similarity, 4),
                     "percentage":        round(similarity * 100, 1),
                     "tier":              tier_info["tier"],

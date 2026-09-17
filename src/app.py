@@ -8,8 +8,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, Response
 
-from src.config import BASE_DIR, PROCESSED_PHOTOS_DIR, SIMILARITY_THRESHOLD
-from src.database import get_stats, get_all_photos, get_photo_by_filename, get_all_events, get_event_by_id
+from src.config import BASE_DIR, PROCESSED_PHOTOS_DIR, GDRIVE_DIR, SIMILARITY_THRESHOLD
+from src.database import (
+    get_stats, 
+    get_all_photos, 
+    get_photo_by_filename, 
+    get_photo_by_id, 
+    get_all_events, 
+    get_event_by_id,
+    delete_event
+)
 from src.indexer import StockIndexer
 from src.searcher import FaceSearcher
 
@@ -45,6 +53,48 @@ def api_events():
     """
     return get_all_events()
 
+@app.delete("/api/events/{event_id}")
+def api_delete_event(event_id: int):
+    """
+    Deletes an event along with all its photos and faces.
+    """
+    event = get_event_by_id(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    delete_event(event_id)
+    # Rebuild index from remaining faces
+    indexer.init_index()
+    from src.database import get_connection
+    conn = get_connection()
+    c = conn.cursor()
+    c.execute("SELECT f.vector_index FROM faces f ORDER BY f.id ASC")
+    # Reload searcher index
+    searcher.reload_index()
+    return {"status": "success", "message": f"Event '{event['name']}' deleted successfully."}
+
+@app.post("/api/events/{event_id}/resync")
+def api_resync_event(event_id: int):
+    """
+    Re-synchronizes an existing event with its Google Drive folder:
+    - Validates Editor permissions.
+    - Removes newly detected duplicates.
+    - Ensures sequential photo_XXXX naming on Drive.
+    - Indexes any new or unindexed photos.
+    """
+    event = get_event_by_id(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    if not event.get("folder_id"):
+        raise HTTPException(status_code=400, detail="This event is not linked to a Google Drive folder")
+    
+    try:
+        result = indexer.sync_event_from_gdrive(folder_id=event["folder_id"], custom_event_name=event["name"])
+        searcher.reload_index()
+        return {"status": "success", "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.get("/api/stats")
 def api_stats():
     stats = get_stats()
@@ -56,20 +106,45 @@ def api_photos(limit: int = 100, offset: int = 0, source: Optional[str] = None, 
     return get_all_photos(limit=limit, offset=offset, source_type=source, event_id=event_id)
 
 
-@app.get("/api/photos/{filename}")
-def api_get_photo(filename: str):
-    file_path = PROCESSED_PHOTOS_DIR / filename
+@app.get("/api/photos/{photo_identifier}")
+def api_get_photo(photo_identifier: str):
+    # Try finding by numeric ID first, otherwise filename
+    photo_record = None
+    if photo_identifier.isdigit():
+        photo_record = get_photo_by_id(int(photo_identifier))
+    if not photo_record:
+        photo_record = get_photo_by_filename(photo_identifier)
+
+    # If local file
+    if photo_record and photo_record.get("source_type") == "local":
+        local_path = Path(photo_record["stored_path"])
+        if local_path.exists():
+            return FileResponse(local_path)
+    
+    # Direct check in processed_photos folder
+    file_path = PROCESSED_PHOTOS_DIR / photo_identifier
     if file_path.exists():
         return FileResponse(file_path)
 
-    # If photo originated from Google Drive (not saved on disk)
-    photo_record = get_photo_by_filename(filename)
+    # If photo originated from Google Drive
     if photo_record and photo_record.get("gdrive_file_id"):
+        cached_file = GDRIVE_DIR / f"drive_{photo_record['id']}_{photo_record['numbered_filename']}"
+        if cached_file.exists():
+            return FileResponse(cached_file)
+
         try:
             raw_bytes = indexer.gdrive_service.get_photo_bytes(photo_record["gdrive_file_id"])
+            try:
+                with open(cached_file, "wb") as f:
+                    f.write(raw_bytes)
+            except Exception:
+                pass
             return Response(content=raw_bytes, media_type="image/jpeg")
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Failed to stream from Drive: {e}")
+            err_msg = str(e)
+            if "File not found" in err_msg or "404" in err_msg:
+                raise HTTPException(status_code=404, detail="Photo deleted or trashed on Drive")
+            raise HTTPException(status_code=502, detail=f"Failed to stream from Drive: {err_msg}")
 
     raise HTTPException(status_code=404, detail="Photo not found")
 

@@ -137,10 +137,43 @@ class GDriveService:
         
         cleaned_id = self.extract_folder_id(folder_id)
         try:
-            folder = self.service.files().get(fileId=cleaned_id, fields='id, name, mimeType').execute()
+            folder = self.service.files().get(
+                fileId=cleaned_id, 
+                fields='id, name, mimeType, capabilities(canEdit, canAddChildren, canDelete, canTrashChildren)'
+            ).execute()
             return folder
         except Exception as e:
             return {"id": cleaned_id, "name": f"Event_{cleaned_id[:6]}"}
+
+    def check_folder_permission(self, folder_id: str) -> Dict[str, Any]:
+        """
+        Validates if the authenticated account has Editor permissions on the folder.
+        """
+        if not self.authenticate():
+            return {"ok": False, "error": "Google Drive credentials not configured or auth failed."}
+        
+        cleaned_id = self.extract_folder_id(folder_id)
+        try:
+            folder = self.service.files().get(
+                fileId=cleaned_id,
+                fields='id, name, capabilities(canEdit, canAddChildren, canDelete, canTrashChildren)'
+            ).execute()
+            capabilities = folder.get("capabilities", {})
+            can_edit = capabilities.get("canEdit", False) or capabilities.get("canAddChildren", False)
+            
+            return {
+                "ok": True,
+                "folder_id": cleaned_id,
+                "folder_name": folder.get("name", "Unknown"),
+                "can_edit": can_edit,
+                "capabilities": capabilities,
+                "account_email": self.account_email
+            }
+        except Exception as e:
+            err_msg = str(e)
+            if "404" in err_msg or "File not found" in err_msg:
+                return {"ok": False, "error": f"Folder not found or not shared with {self.account_email or 'Service Account'}."}
+            return {"ok": False, "error": err_msg}
 
     def list_folder_photos(self, folder_id: str) -> List[Dict[str, Any]]:
         """

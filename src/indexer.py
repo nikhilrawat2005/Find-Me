@@ -136,7 +136,18 @@ class StockIndexer:
 
         cleaned_folder_id = self.gdrive_service.extract_folder_id(folder_id)
 
-        # 1. Determine Event Name
+        # 1. Determine Event Name & Validate Permissions
+        perm_check = self.gdrive_service.check_folder_permission(cleaned_folder_id)
+        if not perm_check.get("ok"):
+            raise RuntimeError(f"Google Drive Error: {perm_check.get('error')}")
+        
+        if not perm_check.get("can_edit"):
+            account = perm_check.get("account_email") or "Service Account"
+            raise RuntimeError(
+                f"Permission Denied: Account '{account}' does not have 'Editor' access to this Google Drive folder. "
+                f"Please open Google Drive, right click the folder -> Share, and grant '{account}' the 'Editor' role."
+            )
+
         if custom_event_name and custom_event_name.strip():
             event_name = custom_event_name.strip()
         else:

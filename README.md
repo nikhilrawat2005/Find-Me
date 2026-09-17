@@ -1,4 +1,4 @@
-# 🔍 FIND ME — AI Face Recognition Photo Search
+# 🔍 FIND ME — AI Face Recognition Photo Search & Event Manager
 
 <div align="center">
 
@@ -6,11 +6,12 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green?style=flat-square&logo=fastapi)
 ![InsightFace](https://img.shields.io/badge/InsightFace-ArcFace-orange?style=flat-square)
 ![FAISS](https://img.shields.io/badge/FAISS-Vector%20Search-purple?style=flat-square)
+![Google Drive API](https://img.shields.io/badge/Google%20Drive-Integrated-yellow?style=flat-square&logo=googledrive)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey?style=flat-square)
 
-**Find any person across hundreds of event photos in seconds — using AI face recognition.**
+**Find any person across hundreds or thousands of event photos in seconds — using AI face recognition with direct Google Drive integration.**
 
-*Built with InsightFace · FAISS · FastAPI · SQLite · Pure HTML/JS*
+*Built with InsightFace · FAISS · FastAPI · Google Drive API · SQLite · Pure Tailwind & JS UI*
 
 </div>
 
@@ -18,97 +19,72 @@
 
 ## ✨ What is FIND ME?
 
-FIND ME is a **local, privacy-first face recognition photo search system**. You upload 1–4 reference photos of a person (or capture them from your webcam), and the system finds every photo of that person in your entire indexed photo collection — even from dark, blurry, far-away, or crowded shots.
-
-Originally built to help find event photos from college fests, it works for any bulk photo collection.
+FIND ME is an **AI-powered face recognition search and event photo management system**. You upload or capture reference photos of a person via your webcam, and the system instantly identifies all photos containing that person across local collections or entire Google Drive event folders — even in challenging lighting, distant shots, group crowds, or varying angles.
 
 ---
 
 ## 🚀 Key Features
 
+### ☁️ Autonomous Google Drive Event Pipeline
+- **1-Click Cloud Sync:** Paste any Google Drive folder link to automatically ingest an event.
+- **Permission Pre-flight Verification:** Validates Google Service Account "Editor" permissions before performing operations, preventing silent failures.
+- **Auto Duplicate Cleanup:** Detects and trashes duplicate uploads directly on Drive based on file hash and names.
+- **Direct Drive Renaming & Sequential Indexing:** Auto-renames Drive images cleanly to sequential formats (`photo_0001.jpg`, `photo_0002.jpg`, ...).
+- **In-Memory Streaming (Zero Local Disk Waste):** Streams photos into RAM for embedding generation and passes them directly to FAISS without cluttering local storage.
+
+### 🔄 Event Management (Re-Sync & Delete)
+- **Per-Event Re-Sync:** Re-check any connected Google Drive folder with 1 click. Verifies permissions, purges newly added duplicates, renames new files sequentially, and indexes unindexed photos.
+- **Event Deletion:** Cleanly delete events and their associated face embeddings from SQLite & FAISS right from the dropdown selector.
+
 ### 🎯 3-Level Smart Search
-Every search automatically runs across **three confidence tiers** — no manual tuning needed:
+Every search automatically classifies matches into **three confidence tiers**:
 
 | Tier | Score Range | Meaning |
 |------|-------------|---------|
-| 🟢 **Strong Match** | ≥ 0.52 | Near-certain — definitely this person |
-| 🟡 **Likely Match** | 0.40 – 0.52 | Probable — most likely this person |
-| 🟠 **Possible Match** | 0.30 – 0.40 | Challenging shot — dark / blurry / far away |
+| 🟢 **Strong Match** | ≥ 0.52 | Near-certain match — definitely this person |
+| 🟡 **Likely Match** | 0.40 – 0.52 | Probable match — high confidence |
+| 🟠 **Possible Match** | 0.28 – 0.40 | Distant, dark, low-angle or challenging shot |
 
-> **Smart group-photo filter:** If a photo has more than 10 faces (crowd/auditorium shot), only Strong and Likely matches are shown — Possible matches are filtered out to prevent false positives.
+> **Smart Crowd Filter:** On group photos containing 10+ faces, low-confidence matches are automatically filtered to avoid false positives.
 
-### 📷 Upload OR Capture from Webcam
-- **Upload tab** — Drag & drop 1–4 photos, or browse files
-- **Camera tab** — Live webcam preview with face guide oval, capture multiple angles (1–4 shots), flash effect on capture, auto-stop on search
+### 📷 Dual Input Modes (Upload & Auto-Camera)
+- **Upload Mode:** Drag-and-drop 1–4 clear reference images.
+- **Webcam Mode:** Live camera stream with visual oval alignment guide and auto-capture on steady face detection.
 
-### ⚡ Fast Vector Search
-- 512-D ArcFace embeddings via **InsightFace** (`buffalo_sc` model)
-- Sub-second **FAISS cosine similarity** search across thousands of faces
-- Multi-reference photo support — averages embeddings from all reference photos for better accuracy
-
-### 🛡️ Non-Destructive — Original Photos Always Safe
-- Original photos in `stock/` are **never touched or modified**
-- Photos are cleanly copied to `data/processed_photos/` with sequential numbering (`photo_0001.jpg`, `photo_0002.jpg`, ...)
-- Full reverse lookup via SQLite — always know which original file a result came from
-
-### 🌐 Zero-Install Web UI
-- Clean dark-mode UI — no external app needed, runs in your browser
-- Shows match percentage, tier badge, face count, and direct link to full photo
-- Works on both **desktop and mobile**
+### 📦 ZIP Export & Report
+- Download all matched photos as a bundled ZIP file.
+- Export detailed match reports in JSON.
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ Architecture & Project Structure
 
 ```
 FIND ME/
-├── stock/                      # ← Put your raw photos here (READ-ONLY)
+├── stock/                      # Local raw photos (optional fallback)
 ├── data/
-│   ├── processed_photos/       # Numbered copies (photo_0001.jpg ...)
-│   ├── metadata.sqlite         # SQLite: photo metadata + face bounding boxes
-│   └── faces.index             # FAISS index of 512-D face embeddings
+│   ├── metadata.sqlite         # SQLite database: events, photos, face bounding boxes
+│   ├── faces.index             # FAISS index storing 512-D ArcFace vectors
+│   └── processed_photos/       # Processed local stock images
 ├── src/
-│   ├── config.py               # Paths, model name, detection thresholds
-│   ├── database.py             # SQLite CRUD operations
-│   ├── face_engine.py          # InsightFace model wrapper (singleton)
-│   ├── image_analyzer.py       # Image quality analysis (brightness/blur/contrast)
-│   ├── indexer.py              # Ingestion pipeline: copy → detect → embed → store
-│   ├── searcher.py             # 3-tier FAISS search + group-photo filter
-│   └── app.py                  # FastAPI REST API
+│   ├── config.py               # Application configurations, paths, and thresholds
+│   ├── database.py             # SQLite CRUD, Event lifecycle, deletion, and stats
+│   ├── face_engine.py          # InsightFace ArcFace model wrapper (singleton)
+│   ├── gdrive_service.py       # Google Drive API client (auth, stream, rename, trash)
+│   ├── image_analyzer.py       # Image quality and lighting validator
+│   ├── indexer.py              # Ingestion engine: Drive sync, duplicate trashing, FAISS indexing
+│   ├── searcher.py             # FAISS similarity search & multi-tier categorization
+│   └── app.py                  # FastAPI REST API endpoints
 ├── static/
-│   └── index.html              # Full web UI (vanilla HTML/CSS/JS + Tailwind CDN)
-├── run.py                      # Server entry point
+│   └── index.html              # Responsive web UI (Tailwind CSS, FontAwesome)
+├── credentials.json            # Google Service Account credentials (optional for Drive)
+├── run.py                      # Server runner
 └── requirements.txt            # Python dependencies
-```
-
-### Data Flow
-
-```
-User uploads/captures photo
-        │
-        ▼
-InsightFace detects face + extracts 512-D embedding
-        │
-        ▼
-Normalize + average (if multiple reference photos)
-        │
-        ▼
-FAISS cosine similarity search (threshold floor: 0.30)
-        │
-        ▼
-3-tier classification → group-photo filter → sorted results
-        │
-        ▼
-JSON response → Web UI renders result cards with tier badges
 ```
 
 ---
 
 ## 🛠️ Setup & Installation
-
-### Prerequisites
-- Python 3.11+
-- Git
 
 ### 1. Clone the repository
 ```bash
@@ -116,7 +92,7 @@ git clone https://github.com/nikhilrawat2005/Find-Me.git
 cd Find-Me
 ```
 
-### 2. Create virtual environment & install dependencies
+### 2. Set up Python environment
 ```bash
 python -m venv .venv
 
@@ -129,132 +105,35 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-> **Note:** InsightFace will automatically download the `buffalo_sc` model (~100 MB) on first run.
+### 3. Google Drive Integration Setup (Optional for Drive Folders)
+1. Place your Google Cloud Service Account key file as `credentials.json` in the root folder.
+2. Share your Google Drive event folders with the Service Account email (`client_email` in `credentials.json`) with the **"Editor"** role.
 
-### 3. Add your photos
-Copy your photos into the `stock/` folder:
-```
-stock/
-├── DSC001.JPG
-├── DSC002.JPG
-├── IMG_5432.jpg
-└── ...
-```
-
-### 4. Start the server
+### 4. Start the Application
 ```bash
-# Windows
-.\.venv\Scripts\python.exe run.py
-
-# macOS / Linux
-.venv/bin/python run.py
+python run.py
 ```
-
-### 5. Open the web app
-Navigate to **[http://127.0.0.1:8000](http://127.0.0.1:8000)** in your browser.
+Open your browser at **[http://127.0.0.1:8000](http://127.0.0.1:8000)**.
 
 ---
 
 ## 📖 How to Use
 
-### Step 1 — Index your photos
-Click **"Scan & Index Stock"** in the top-right.  
-The system will:
-- Copy photos from `stock/` → `data/processed_photos/` with numbered names
-- Detect all faces and extract 512-D embeddings
-- Store everything in SQLite + FAISS index
-
-*(Only new/unprocessed photos are indexed each time — safe to re-run)*
-
-### Step 2 — Search for a person
-
-**Option A: Upload photos**
-1. Click the **Upload Photo** tab
-2. Drag & drop 1–4 clear reference photos of the person
-3. Click **Search Person**
-
-**Option B: Capture from webcam**
-1. Click the **Use Camera** tab
-2. Click **Start Camera** → allow browser permission
-3. Click **Capture** to take 1–4 shots from different angles
-4. Click **Search Person**
-
-### Step 3 — View results
-Results appear sorted by confidence score.  
-Each card shows:
-- **Match percentage** (e.g., `52.3%`)
-- **Tier badge** (Strong / Likely / Possible)
-- Original filename for traceability
-- **View** link to open the full-resolution photo
-
----
-
-## ⚙️ Configuration
-
-Edit `src/config.py` to change:
-
-```python
-INSIGHTFACE_MODEL_NAME = "buffalo_sc"   # Lightweight model (faster)
-# Options: "buffalo_l" (more accurate, larger), "buffalo_sc" (fast, compact)
-
-DETECTION_SIZE      = (640, 640)        # Face detection resolution
-DETECTION_THRESHOLD = 0.55             # Face detector confidence cutoff
-```
-
-Edit tier thresholds in `src/searcher.py`:
-```python
-TIER_STRONG   = 0.52   # Strong Match floor
-TIER_LIKELY   = 0.40   # Likely Match floor
-TIER_POSSIBLE = 0.30   # Possible Match floor (minimum)
-```
-
----
-
-## 🧠 Tech Stack
-
-| Component | Technology |
-|-----------|-----------|
-| Face Detection & Embedding | [InsightFace](https://github.com/deepinsight/insightface) (ArcFace `buffalo_sc`) |
-| Vector Similarity Search | [FAISS](https://github.com/facebookresearch/faiss) (IndexFlatIP — cosine) |
-| Backend API | [FastAPI](https://fastapi.tiangolo.com/) + [Uvicorn](https://www.uvicorn.org/) |
-| Database | SQLite (via Python `sqlite3`) |
-| Frontend | Vanilla HTML/JS + [Tailwind CSS](https://tailwindcss.com/) CDN + [Font Awesome](https://fontawesome.com/) |
-| Camera API | Browser `getUserMedia` (WebRTC) |
-
----
-
-## 📊 Performance
-
-- **Indexing speed:** ~2–5 sec per photo (CPU, depends on face count)
-- **Search speed:** < 100ms for 500+ photos (FAISS in-memory)
-- **Model size:** `buffalo_sc` — ~20 MB (fast, runs on CPU)
-- **Embedding dim:** 512-D normalized float32 vectors
-
----
-
-## 🗺️ Roadmap
-
-- [ ] Export search results as ZIP of matched photos
-- [ ] Batch search (find multiple different people at once)
-- [ ] Person tagging / labeling in the UI
-- [ ] REST API documentation (Swagger UI at `/docs` already available)
-- [ ] Docker container for one-command deployment
-
----
-
-## 🤝 Contributing
-
-Pull requests welcome! For major changes, please open an issue first.
+1. **Add an Event:**
+   - Click **"Add / Sync Event"** in the top bar.
+   - Enter your Google Drive folder link or folder ID.
+   - The system checks permissions, cleans duplicates, renames images (`photo_0001.jpg`...), and indexes faces directly in RAM.
+2. **Re-Sync or Delete:**
+   - Select an event from the top **Event** dropdown.
+   - Click the **Re-Sync (<i class="fa-solid fa-rotate"></i>)** button to check for new files or re-run duplicate/naming cleanups.
+   - Click the **Delete (<i class="fa-solid fa-trash-can"></i>)** button to remove the event data from the database.
+3. **Search:**
+   - Upload or capture 1–4 photos of the target person.
+   - Click **Search Person** to view matched photos categorized by confidence level.
 
 ---
 
 ## 📄 License
 
-MIT License — free to use, modify, and distribute.
+MIT License — free to use and build upon.
 
----
-
-<div align="center">
-  <strong>Built with ❤️ by Nikhil Rawat</strong><br>
-  <sub>Face recognition · Vector search · Privacy-first · Local-only</sub>
-</div>
