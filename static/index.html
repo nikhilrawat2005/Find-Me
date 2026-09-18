@@ -414,6 +414,9 @@
           </div>
         </div>
 
+        <!-- Form Fields (hidden while syncing) -->
+        <div id="gdriveModalFormFields" class="space-y-4">
+
         <!-- Event Name (Optional / Auto-detected) -->
         <div class="space-y-1.5">
           <label for="gdriveEventNameInput" class="block font-semibold text-slate-200">
@@ -464,11 +467,40 @@
           </ul>
         </div>
 
+        <!-- Live Sync Progress Panel (terminal-style) -->
+        <div id="modalSyncPanel" class="hidden space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="relative flex h-2.5 w-2.5">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-400"></span>
+              </span>
+              <span id="modalSyncTitle" class="text-xs font-bold text-white tracking-wide">Starting pipeline...</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span id="modalSyncPhaseBadge" class="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-blue-900/80 border border-cyan-500/40 text-cyan-300">INIT</span>
+              <span id="modalSyncPct" class="text-sm font-black font-mono text-cyan-400">0%</span>
+            </div>
+          </div>
+          <div class="w-full bg-[#020710] rounded-full h-3 border border-blue-950 overflow-hidden">
+            <div id="modalSyncBar" class="h-full w-0 rounded-full bg-gradient-to-r from-blue-600 via-sky-400 to-cyan-400 transition-all duration-300"></div>
+          </div>
+          <div class="flex items-center justify-between text-[11px]">
+            <span id="modalSyncMsg" class="text-slate-300 font-medium truncate max-w-[75%]">Initializing...</span>
+            <span id="modalSyncCounts" class="font-mono font-bold text-cyan-300 shrink-0">0 / 0</span>
+          </div>
+          <div id="modalSyncLog" class="bg-[#010509] border border-blue-950 rounded-xl p-3 h-40 overflow-y-auto font-mono text-[10px] leading-relaxed">
+            <div class="text-cyan-500/70">&gt; Sync pipeline initializing...</div>
+          </div>
+        </div>
+
+        <!-- Simple progress fallback -->
         <!-- Progress or Logs -->
         <div id="gdriveProgressBox" class="hidden p-3 rounded-xl bg-blue-950/40 border border-blue-800/40 text-cyan-300 text-xs flex items-center gap-2">
           <i class="fa-solid fa-arrows-rotate animate-spin text-cyan-400 shrink-0"></i>
           <span id="gdriveProgressMsg">Syncing event photos from Drive...</span>
         </div>
+        </div><!-- /gdriveModalFormFields -->
 
       </div>
 
@@ -1434,6 +1466,103 @@
       });
     }
 
+    // ── Modal live-progress helpers ──────────────────────────────────────
+    let modalSyncPolling = null;
+    let lastModalLogMsg = '';
+
+    const PHASE_LABELS = {
+      validating: { label: 'VALIDATING', color: 'bg-blue-900/80 border-blue-500/40 text-blue-300' },
+      duplicates: { label: 'DEDUP',      color: 'bg-purple-900/80 border-purple-500/40 text-purple-300' },
+      renaming:   { label: 'RENAMING',   color: 'bg-amber-900/80 border-amber-500/40 text-amber-300' },
+      indexing:   { label: 'INDEXING',   color: 'bg-cyan-900/80 border-cyan-500/40 text-cyan-300' },
+      resetting:  { label: 'RESETTING',  color: 'bg-red-900/80 border-red-600/40 text-red-300' },
+      completed:  { label: 'DONE',  color: 'bg-emerald-900/80 border-emerald-500/40 text-emerald-300' },
+      error:      { label: 'ERROR', color: 'bg-red-900/80 border-red-500/40 text-red-300' },
+      idle:       { label: 'INIT',  color: 'bg-blue-900/80 border-cyan-500/40 text-cyan-300' },
+    };
+
+    function modalLogLine(text, colorClass) {
+      const box = document.getElementById('modalSyncLog');
+      if (!box) return;
+      const line = document.createElement('div');
+      line.className = colorClass || 'text-slate-300';
+      line.textContent = text;
+      box.appendChild(line);
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function showModalSyncPanel(eventName) {
+      const ff = document.getElementById('gdriveModalFormFields');
+      if (ff) ff.classList.add('hidden');
+      const panel = document.getElementById('modalSyncPanel');
+      if (panel) panel.classList.remove('hidden');
+      document.getElementById('modalSyncTitle').textContent = 'Syncing: ' + (eventName || 'Event');
+      document.getElementById('modalSyncPct').textContent = '0%';
+      document.getElementById('modalSyncBar').style.width = '0%';
+      document.getElementById('modalSyncMsg').textContent = 'Starting pipeline...';
+      document.getElementById('modalSyncCounts').textContent = '0 / 0';
+      document.getElementById('modalSyncLog').innerHTML = '<div class="text-cyan-500/70">&gt; Pipeline started...</div>';
+      lastModalLogMsg = '';
+    }
+
+    function hideModalSyncPanel() {
+      const ff = document.getElementById('gdriveModalFormFields');
+      if (ff) ff.classList.remove('hidden');
+      const panel = document.getElementById('modalSyncPanel');
+      if (panel) panel.classList.add('hidden');
+    }
+
+    function startModalSyncPolling() {
+      if (modalSyncPolling) clearInterval(modalSyncPolling);
+      modalSyncPolling = setInterval(async () => {
+        try {
+          const res = await fetch('/api/events/progress');
+          if (!res.ok) return;
+          const prog = await res.json();
+          const phase = prog.phase || 'idle';
+          const phaseInfo = PHASE_LABELS[phase] || PHASE_LABELS.idle;
+          const pct = prog.percentage || 0;
+          const msg = prog.message || '';
+
+          const badge = document.getElementById('modalSyncPhaseBadge');
+          if (badge) {
+            badge.textContent = phaseInfo.label;
+            badge.className = 'px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border ' + phaseInfo.color;
+          }
+          if (prog.event_name) {
+            document.getElementById('modalSyncTitle').textContent = 'Syncing: ' + prog.event_name;
+          }
+          document.getElementById('modalSyncPct').textContent = pct + '%';
+          document.getElementById('modalSyncBar').style.width = pct + '%';
+          if (prog.total > 0) {
+            document.getElementById('modalSyncCounts').textContent = (prog.current || 0) + ' / ' + prog.total;
+          }
+          if (msg && msg !== lastModalLogMsg) {
+            document.getElementById('modalSyncMsg').textContent = msg;
+            const logColor =
+              phase === 'indexing'   ? 'text-cyan-300'   :
+              phase === 'completed'  ? 'text-emerald-400' :
+              phase === 'error'      ? 'text-red-400'     :
+              phase === 'duplicates' ? 'text-purple-300'  :
+              phase === 'renaming'   ? 'text-amber-300'   :
+              phase === 'resetting'  ? 'text-red-300'     : 'text-slate-400';
+            const prefixMap = { indexing:'[IMG]', completed:'[OK]', error:'[ERR]',
+              duplicates:'[SCAN]', renaming:'[RENAME]', resetting:'[RESET]', validating:'[AUTH]' };
+            modalLogLine((prefixMap[phase] || '[>]') + ' ' + msg, logColor);
+            lastModalLogMsg = msg;
+          }
+          if (!prog.is_running && (phase === 'completed' || phase === 'error')) {
+            clearInterval(modalSyncPolling);
+            modalSyncPolling = null;
+          }
+        } catch(e) { /* ignore */ }
+      }, 600);
+    }
+
+    function stopModalSyncPolling() {
+      if (modalSyncPolling) { clearInterval(modalSyncPolling); modalSyncPolling = null; }
+    }
+
     async function startGDriveSync() {
       const folderVal = gdriveFolderInput.value.trim();
       const eventNameInput = document.getElementById('gdriveEventNameInput');
@@ -1445,42 +1574,52 @@
       }
 
       btnStartGDriveSync.disabled = true;
-      gdriveProgressBox.classList.remove('hidden');
-      gdriveProgressMsg.textContent = 'Running 1-Click Event Pipeline (Clean Dupes ➔ Auto-Rename ➔ In-Memory Indexing)...';
+      showModalSyncPanel(customName || 'Event');
+      startModalSyncPolling();
 
       try {
-        let syncUrl = `/api/events/sync?folder_id=${encodeURIComponent(folderVal)}`;
-        if (customName) {
-          syncUrl += `&name=${encodeURIComponent(customName)}`;
-        }
+        let syncUrl = '/api/events/sync?folder_id=' + encodeURIComponent(folderVal);
+        if (customName) syncUrl += '&name=' + encodeURIComponent(customName);
 
         const res = await fetch(syncUrl, { method: 'POST' });
         const data = await res.json();
-        gdriveProgressBox.classList.add('hidden');
+        stopModalSyncPolling();
         btnStartGDriveSync.disabled = false;
 
         if (res.ok) {
           const d = data.data;
-          alert(`🎉 Event Synchronized Successfully!\n\nEvent: "${d.event_name}"\nDuplicates Trashed: ${d.duplicates_removed}\nFiles Renamed on Drive: ${d.files_renamed}\nNew Photos Indexed: ${d.newly_processed_photos}\nTotal Event Photos: ${d.total_photos}`);
-          closeGDriveModal();
-          
-          await loadStats();
-          await loadEvents();
-          
-          // Auto-select newly synced event section card
-          await selectEvent(d.event_id);
+          document.getElementById('modalSyncPct').textContent = '100%';
+          document.getElementById('modalSyncBar').style.width = '100%';
+          document.getElementById('modalSyncCounts').textContent = d.newly_processed_photos + ' photos';
+          document.getElementById('modalSyncMsg').textContent = 'Done! ' + d.newly_processed_photos + ' photos indexed.';
+          modalLogLine('[OK] "' + d.event_name + '" synced! ' + d.newly_processed_photos + ' new photos, ' + d.duplicates_removed + ' dupes removed.', 'text-emerald-400 font-bold');
+          const badge = document.getElementById('modalSyncPhaseBadge');
+          if (badge) { badge.textContent = 'DONE'; badge.className = 'px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border bg-emerald-900/80 border-emerald-500/40 text-emerald-300'; }
+          setTimeout(async () => {
+            hideModalSyncPanel();
+            closeGDriveModal();
+            await loadStats();
+            await loadEvents();
+            await selectEvent(d.event_id);
+          }, 2500);
         } else {
-          alert('Event Sync Failed:\n' + (data.detail || 'Unknown error'));
+          stopModalSyncPolling();
+          modalLogLine('[ERR] Sync Failed: ' + (data.detail || 'Unknown error'), 'text-red-400 font-bold');
+          document.getElementById('modalSyncMsg').textContent = 'Sync failed. Check log above.';
+          const badge = document.getElementById('modalSyncPhaseBadge');
+          if (badge) { badge.textContent = 'ERROR'; badge.className = 'px-2 py-0.5 rounded-full text-[10px] font-mono font-bold border bg-red-900/80 border-red-500/40 text-red-300'; }
+          setTimeout(() => { hideModalSyncPanel(); btnStartGDriveSync.disabled = false; }, 3500);
         }
       } catch (err) {
-        gdriveProgressBox.classList.add('hidden');
+        stopModalSyncPolling();
+        hideModalSyncPanel();
         btnStartGDriveSync.disabled = false;
         alert('Network error during Event sync: ' + err.message);
       }
     }
 
 
-    async function triggerDriveRename() {
+        async function triggerDriveRename() {
       const folderVal = gdriveFolderInput.value.trim();
       if (!folderVal) {
         alert('Please enter the Google Drive folder link or folder ID to rename.');
