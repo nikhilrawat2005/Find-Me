@@ -122,11 +122,11 @@
       <div class="flex items-center space-x-2">
         <!-- Re-Sync Incremental -->
         <button id="btnResyncEvent" onclick="resyncCurrentEvent(false)" title="Re-sync event (Preserves existing numbers, appends only new photos from Drive)" class="hidden px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-[#071530] border border-blue-800/80 text-cyan-300 hover:border-cyan-400 hover:shadow-[0_0_12px_rgba(0,195,255,0.25)] transition">
-          <i class="fa-solid fa-rotate mr-1"></i> Incremental Sync
+          <i class="fa-solid fa-rotate mr-1"></i> Update Data
         </button>
         <!-- Fresh Reset -->
         <button id="btnFreshResetEvent" onclick="resyncCurrentEvent(true)" title="Clean & Fresh Re-Index" class="hidden px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-amber-950/40 border border-amber-800/60 text-amber-300 hover:border-amber-400 transition">
-          <i class="fa-solid fa-arrows-rotate mr-1"></i> Fresh Reset
+          <i class="fa-solid fa-arrows-rotate mr-1"></i> Reset Data
         </button>
         <!-- Delete Event -->
         <button id="btnDeleteEvent" onclick="deleteCurrentEvent()" title="Delete selected event" class="hidden px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-red-950/40 border border-red-800/60 text-red-300 hover:border-red-400 transition">
@@ -457,7 +457,7 @@
             <i class="fa-solid fa-wand-magic-sparkles"></i> 1-Click Turbo Event Pipeline:
           </div>
           <ul class="text-[11px] text-slate-400 space-y-1 list-disc list-inside">
-            <li><strong class="text-slate-200">Auto-Trash Duplicates:</strong> Same name/hash files Drive se trash ho jayengi.</li>
+            <li><strong class="text-slate-200">Auto-Trash Duplicates:</strong> Identical file content (same MD5 hash) automatically trash ho jayegi Drive se.</li>
             <li><strong class="text-slate-200">Auto-Rename:</strong> Files cleanly <code class="text-cyan-300 font-mono">photo_0001.jpg</code>... format mein rename hongi.</li>
             <li><strong class="text-slate-200">Multi-Thread Stream:</strong> Background pre-fetching + downscaled fast InsightFace extraction.</li>
             <li><strong class="text-slate-200">Event Isolated:</strong> Har event ka data alag save hoga!</li>
@@ -1026,9 +1026,9 @@
 
       let confirmPrompt = '';
       if (freshReset) {
-        confirmPrompt = `⚠️ CLEAN & FRESH RE-INDEX for "${eventName}"?\n\nThis will:\n1. Completely wipe current database and vector entries for this event.\n2. Renumber all Drive photos cleanly starting from photo_0001.jpg.\n3. Re-index all photos and extract fresh embeddings.\n\n(Your photos on Google Drive will NOT be deleted, only renamed & freshly indexed). Continue?`;
+        confirmPrompt = `⚠️ RESET DATA for "${eventName}"?\n\nThis will:\n1. Completely wipe current database and vector entries for this event.\n2. Renumber all Drive photos cleanly starting from photo_0001.jpg.\n3. Re-index all photos and extract fresh embeddings.\n\n(Your photos on Google Drive will NOT be deleted, only renamed & freshly indexed). Continue?`;
       } else {
-        confirmPrompt = `Re-synchronize "${eventName}" (Incremental)?\n\nThis will:\n1. Keep all existing photo numbers.\n2. Find only NEW unindexed photos and assign continuation numbers.\n3. Index only new photos into FAISS. Continue?`;
+        confirmPrompt = `UPDATE DATA for "${eventName}"?\n\nThis will:\n1. Keep all existing photo numbers.\n2. Find only NEW unindexed photos and assign continuation numbers.\n3. Index only new photos into FAISS. Continue?`;
       }
 
       if (!confirm(confirmPrompt)) {
@@ -1037,8 +1037,8 @@
 
       loader.classList.remove('hidden');
       resultsGrid.classList.add('hidden');
-      loaderText.textContent = freshReset ? `Running Clean Reset & Fresh Indexing on "${eventName}"...` : `Turbo re-syncing "${eventName}" with Google Drive...`;
-      startSyncProgressPolling(freshReset ? `Fresh Reset: ${eventName}` : `Re-syncing: ${eventName}`);
+      loaderText.textContent = freshReset ? `Resetting data & re-indexing "${eventName}"...` : `Updating data for "${eventName}" from Google Drive...`;
+      startSyncProgressPolling(freshReset ? `Reset Data: ${eventName}` : `Update Data: ${eventName}`);
 
       try {
         const res = await fetch(`/api/events/${currentEventId}/resync?fresh_reset=${freshReset}`, { method: 'POST' });
@@ -1048,7 +1048,7 @@
 
         if (res.ok) {
           const d = data.data;
-          let summaryMsg = freshReset ? `✨ Clean Fresh Re-Index Complete for "${d.event_name}"!\n\n` : `✨ Incremental Sync Complete for "${d.event_name}"!\n\n`;
+          let summaryMsg = freshReset ? `✨ Reset Data Complete for "${d.event_name}"!\n\n` : `✨ Update Data Complete for "${d.event_name}"!\n\n`;
           summaryMsg += `• Duplicates Removed: ${d.duplicates_removed}\n`;
           summaryMsg += `• Files Renamed on Drive: ${d.files_renamed}\n`;
           summaryMsg += `• Newly Processed Photos: ${d.newly_processed_photos}\n`;

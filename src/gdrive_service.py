@@ -484,16 +484,15 @@ class GDriveService:
 
     def find_and_clean_duplicates(self, folder_id: str, auto_delete: bool = False) -> Dict[str, Any]:
         """
-        Scans all files across root and subfolders for duplicates (same name OR same md5 checksum).
+        Scans all files across root and subfolders for duplicates (same md5 checksum only).
+        Same-name files in DIFFERENT subfolders are NOT treated as duplicates — only truly
+        identical binary content (md5) is removed.
         If auto_delete is True, keeps the earliest/primary uploaded copy and deletes duplicates.
         """
         files = self.crawl_folder_recursive(folder_id)
-        name_groups: Dict[str, List[Dict[str, Any]]] = {}
         hash_groups: Dict[str, List[Dict[str, Any]]] = {}
 
         for f in files:
-            name = f["name"].strip().lower()
-            name_groups.setdefault(name, []).append(f)
             md5 = f.get("md5Checksum")
             if md5:
                 hash_groups.setdefault(md5, []).append(f)
@@ -502,7 +501,8 @@ class GDriveService:
         deleted_count = 0
         seen_dup_ids = set()
 
-        for name, group in name_groups.items():
+        # Only deduplicate on identical file content (md5 hash)
+        for md5, group in hash_groups.items():
             if len(group) > 1:
                 group_sorted = sorted(group, key=lambda x: x.get("createdTime", x.get("modifiedTime", "")))
                 keep = group_sorted[0]
@@ -511,7 +511,7 @@ class GDriveService:
                     if d["id"] not in seen_dup_ids:
                         seen_dup_ids.add(d["id"])
                         duplicates.append({
-                            "reason": f"Duplicate file name: '{name}'",
+                            "reason": f"Identical file content (md5: {md5})",
                             "keep_id": keep["id"],
                             "keep_name": keep["name"],
                             "delete_id": d["id"],
